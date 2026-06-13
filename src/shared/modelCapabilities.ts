@@ -29,3 +29,7 @@ export type ModelId = keyof typeof MODEL_CAPABILITIES;
 export function getDefaultModelCapabilities() {
   return MODEL_CAPABILITIES['seedance2.0fast'];
 }
+
+export function isModelId(value: string): value is ModelId {
+  return value in MODEL_CAPABILITIES;
+}

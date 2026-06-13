@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": [
+    "electron/**/*.ts",
+    "src/domain/**/*.ts",
+    "src/main/**/*.ts",
+    "src/services/**/*.ts",
+    "src/shared/**/*.ts"
+  ],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "node_modules", "dist", "dist-electron"]
+}

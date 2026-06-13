@@ -41,8 +41,10 @@ export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): Wo
     endpoint: DEFAULT_ENDPOINT,
     region: DEFAULT_REGION,
     service: DEFAULT_SERVICE,
+    concurrencyLimit: input.concurrencyLimit ?? 1,
     enabled: true,
-    createdAt: new Date(0).toISOString()
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString()
   };
 
   return {

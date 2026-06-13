@@ -27,14 +27,20 @@ export interface ApiAccount {
   endpoint: string;
   region: string;
   service: string;
+  concurrencyLimit: number;
   enabled: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface ApiAccountInput {
   name: string;
   accessKeyId: string;
   secretAccessKey: string;
+  endpoint?: string;
+  region?: string;
+  service?: string;
+  concurrencyLimit?: number;
 }
 
 export interface DraftState {

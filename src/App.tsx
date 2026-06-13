@@ -31,6 +31,7 @@ import {
   type StorageLike
 } from './domain/persistence';
 import type { ApiAccountInput, AssetReference, WorkspaceState } from './domain/types';
+import { getNativeLocalApi } from './electronBridge';
 import { getDefaultModelCapabilities, MODEL_CAPABILITIES } from './shared/modelCapabilities';
 import './styles.css';
 
@@ -54,6 +55,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [state, setState] = useState<WorkspaceState>(() => loadWorkspaceState(storage));
   const [accountForm, setAccountForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
   const [notice, setNotice] = useState('已保存');
+  const nativeApi = getNativeLocalApi();
 
   const currentAccount = useMemo(
     () => state.accounts.find((account) => account.id === state.currentAccountId) ?? null,
@@ -64,6 +66,30 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     saveWorkspaceState(storage, state);
     setNotice('已保存');
   }, [state, storage]);
+
+  useEffect(() => {
+    if (!nativeApi) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void nativeApi.listAccounts().then((accounts) => {
+      if (cancelled) {
+        return;
+      }
+
+      setState((current) => ({
+        ...current,
+        accounts,
+        currentAccountId: current.currentAccountId ?? accounts[0]?.id ?? null
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeApi]);
 
   useEffect(() => {
     if (state.tasks.length === 0) {
@@ -86,7 +112,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, []);
 
   const handleAddAccount = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
+    async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
       if (!accountForm.name.trim() || !accountForm.accessKeyId.trim() || !accountForm.secretAccessKey) {
@@ -94,10 +120,20 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         return;
       }
 
-      setState((current) => addApiAccount(current, accountForm));
+      if (nativeApi) {
+        const account = await nativeApi.addAccount(accountForm);
+        setState((current) => ({
+          ...current,
+          accounts: [...current.accounts, account],
+          currentAccountId: current.currentAccountId ?? account.id
+        }));
+      } else {
+        setState((current) => addApiAccount(current, accountForm));
+      }
+
       setAccountForm(DEFAULT_ACCOUNT_FORM);
     },
-    [accountForm]
+    [accountForm, nativeApi]
   );
 
   const handleSelectAccount = useCallback((event: ChangeEvent<HTMLSelectElement>) => {

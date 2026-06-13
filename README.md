@@ -21,11 +21,20 @@ npm install
 npm run dev
 ```
 
+## 本地桌面端
+
+```bash
+npm run electron:start
+```
+
+Electron 版本通过 preload 暴露 `window.yqLocal`，新增账号时由主进程保存 Secret。Renderer 只拿到账号元数据和 `secretAccessKeyRef`。
+
 ## 验证
 
 ```bash
 npm test
 npm run build
+npm run electron:build
 ```
 
 ## 关键约束
@@ -35,6 +44,17 @@ npm run build
 - 真实提交前，素材必须有公网可访问的 `publicUrl`。
 - `seedance2.0fast` 的真实提交字段未补齐前，不生成伪造请求字段。
 - 已知接口模型 `pippit_iv2v_cvtob_master` 只支持当前文档确认的图片字段。
+
+## 真实 API 测试前置
+
+真实提交需要同时具备：
+
+- Access Key ID
+- Secret Access Key
+- 至少 1 个公网可访问 jpg/png 图片 URL
+- 使用已确认映射的 `pippit_iv2v_cvtob_master`
+
+不要把 AK/SK 写进源码、README、测试或提交记录。真实凭据只应通过本地客户端账号入口录入。
 
 ## 后续阶段
 
