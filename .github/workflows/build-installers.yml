@@ -29,13 +29,13 @@ jobs:
       - name: Build
         env:
           YQHUB_RELAY_URL: ${{ vars.YQHUB_RELAY_URL }}
-        run: npm run dist:mac
+        run: npm run dist:mac && npm run release:bundle
 
       - name: Upload macOS installers
         uses: actions/upload-artifact@v4
         with:
           name: YQhub-macos
-          path: release/*
+          path: release/YQhub-v*/
 
   build-windows:
     name: Windows
@@ -56,10 +56,10 @@ jobs:
       - name: Build
         env:
           YQHUB_RELAY_URL: ${{ vars.YQHUB_RELAY_URL }}
-        run: npm run dist:win
+        run: npm run dist:win && npm run release:bundle
 
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
         with:
           name: YQhub-windows
-          path: release/*
+          path: release/YQhub-v*/

@@ -1,6 +1,6 @@
 {
   "name": "yqhub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "author": "fishknowsss",
   "productName": "YQhub",
@@ -23,7 +23,9 @@
     "dist": "npm run check && electron-builder --publish never",
     "dist:dir": "npm run check && electron-builder --dir --publish never",
     "dist:mac": "npm run check && electron-builder --mac --universal --publish never",
-    "dist:win": "npm run check && electron-builder --win --x64 --publish never"
+    "dist:win": "npm run check && electron-builder --win --x64 --publish never",
+    "release:bundle": "node scripts/prepare-release.mjs",
+    "release:local": "npm run dist:mac && npm run dist:win && npm run release:bundle"
   },
   "dependencies": {
     "electron-store": "^11.0.2",

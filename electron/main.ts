@@ -41,6 +41,7 @@ const taskService = createTaskService({
   client: relayClient,
   downloadService
 });
+let mainWindow: BrowserWindow | null = null;
 
 function createElectronSecretVault(localStore: Store<MainStoreSchema>): SecretVault {
   return {
@@ -107,6 +108,12 @@ async function createWindow(): Promise<void> {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+  mainWindow = window;
+  window.on('closed', () => {
+    if (mainWindow === window) {
+      mainWindow = null;
+    }
+  });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
@@ -120,8 +127,13 @@ async function createWindow(): Promise<void> {
 
 registerIpcHandlers();
 
-await app.whenReady();
-await createWindow();
+void app
+  .whenReady()
+  .then(createWindow)
+  .catch((error: unknown) => {
+    console.error('YQhub failed to start', error);
+    app.quit();
+  });
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -134,3 +146,7 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+export function getMainWindowForTest(): BrowserWindow | null {
+  return mainWindow;
+}

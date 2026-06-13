@@ -86,8 +86,14 @@ npm audit
 ## 打包
 
 ```bash
-npm run dist:mac
-npm run dist:win
+npm run release:local
 ```
 
-GitHub Actions 会构建 macOS 和 Windows 安装包。未配置代码签名证书时，系统可能提示未验证开发者。
+最终交付文件会统一放在 `release/YQhub-v版本号/`：
+
+- `YQhub-版本号-mac-universal.dmg`：macOS Apple Silicon / Intel 通用安装包。
+- `YQhub-版本号-windows-x64.exe`：Windows x64 安装包。
+- `SHA256SUMS.txt`：安装包校验和。
+- `manifest.json`：版本、平台、文件大小和校验信息。
+
+GitHub Actions 也只上传这个版本化目录。未配置代码签名证书时，系统可能提示未验证开发者。
