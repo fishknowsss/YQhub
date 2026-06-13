@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const electronMock = vi.hoisted(() => {
@@ -88,18 +90,11 @@ describe('Electron main process', () => {
     vi.clearAllMocks();
   });
 
-  it('does not block module evaluation while waiting for Electron readiness', async () => {
-    electronMock.state.readyPromise = new Promise(() => undefined);
+  it('does not use top-level await for Electron readiness', async () => {
+    const source = await readFile(path.join(process.cwd(), 'electron/main.ts'), 'utf8');
 
-    const result = await Promise.race([
-      importMain().then(() => 'resolved'),
-      new Promise<string>((resolve) => {
-        setTimeout(() => resolve('timeout'), 50);
-      })
-    ]);
-
-    expect(result).toBe('resolved');
-    expect(electronMock.windows).toHaveLength(0);
+    expect(source).not.toMatch(/await\s+app\.whenReady\(\)/u);
+    expect(source).toMatch(/void\s+app\s*\n\s*\.whenReady\(\)/u);
   });
 
   it('keeps the main window referenced until it is closed', async () => {
