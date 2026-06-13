@@ -19,6 +19,7 @@ describe('workspace persistence', () => {
     saveWorkspaceState(storage, state);
 
     expect(storage.getItem(WORKSPACE_STORAGE_KEY)).toContain('一支干净利落的产品视频');
+    expect(WORKSPACE_STORAGE_KEY).toBe('yqhub-workspace:v1');
     expect(WORKSPACE_STORAGE_KEY).toMatch(/:v\d+$/);
     expect(loadWorkspaceState(storage)).toMatchObject({
       draft: {
@@ -36,5 +37,20 @@ describe('workspace persistence', () => {
     const state = loadWorkspaceState(storage);
 
     expect(state).toEqual(createInitialState());
+  });
+
+  it('loads the previous yq workspace key during brand migration', () => {
+    const storage = createMemoryStorage();
+    const state = updateDraft(createInitialState(), {
+      prompt: '旧缓存里的提示词'
+    });
+
+    storage.setItem('yq-workspace:v1', JSON.stringify(state));
+
+    expect(loadWorkspaceState(storage)).toMatchObject({
+      draft: {
+        prompt: '旧缓存里的提示词'
+      }
+    });
   });
 });

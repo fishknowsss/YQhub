@@ -5,13 +5,13 @@ import { createMemoryStorage } from './domain/persistence';
 
 describe('App', () => {
   afterEach(() => {
-    delete window.yqLocal;
+    delete window.yqhub;
   });
 
   it('renders the local video workspace controls', () => {
     render(<App storage={createMemoryStorage()} />);
 
-    expect(screen.getByRole('heading', { name: '小云雀本地生成端' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'YQhub' })).toBeInTheDocument();
     expect(screen.getByText('拖入素材，或粘贴图片')).toBeInTheDocument();
     expect(screen.getByLabelText('提示词')).toBeInTheDocument();
     expect(screen.getByLabelText('时长')).toBeInTheDocument();
@@ -79,7 +79,7 @@ describe('App', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z'
     }));
-    window.yqLocal = {
+    window.yqhub = {
       listAccounts: vi.fn(async () => []),
       addAccount,
       deleteAccount: vi.fn(async () => undefined),
@@ -108,13 +108,13 @@ describe('App', () => {
       accessKeyId: 'ak-native',
       secretAccessKey: 'sk-native'
     });
-    expect(storage.getItem('yq-workspace:v1')).not.toContain('sk-native');
+    expect(storage.getItem('yqhub-workspace:v1')).not.toContain('sk-native');
   });
 
   it('blocks native submit when a reference asset has no public URL', async () => {
     const storage = createMemoryStorage();
     window.URL.createObjectURL = vi.fn(() => 'blob:asset');
-    window.yqLocal = {
+    window.yqhub = {
       listAccounts: vi.fn(async () => [
         {
           id: 'native-account-1',
@@ -156,7 +156,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
     expect(await screen.findByText('请先配置素材上传方式')).toBeInTheDocument();
-    expect(window.yqLocal.submitTask).not.toHaveBeenCalled();
+    expect(window.yqhub.submitTask).not.toHaveBeenCalled();
   });
 
   it('submits a native task when assets have public URLs', async () => {
@@ -167,7 +167,7 @@ describe('App', () => {
       apiTaskId: 'remote-task-1',
       requestId: 'request-1'
     }));
-    window.yqLocal = {
+    window.yqhub = {
       listAccounts: vi.fn(async () => [
         {
           id: 'native-account-1',

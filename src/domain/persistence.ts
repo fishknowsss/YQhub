@@ -1,7 +1,8 @@
 import { createInitialState } from './state';
 import type { WorkspaceState } from './types';
 
-export const WORKSPACE_STORAGE_KEY = 'yq-workspace:v1';
+export const WORKSPACE_STORAGE_KEY = 'yqhub-workspace:v1';
+const LEGACY_WORKSPACE_STORAGE_KEY = 'yq-workspace:v1';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -24,7 +25,9 @@ export function saveWorkspaceState(storage: StorageLike, state: WorkspaceState):
 
 export function loadWorkspaceState(storage: StorageLike): WorkspaceState {
   try {
-    const cachedValue = getCachedStorageValue(storage, WORKSPACE_STORAGE_KEY);
+    const cachedValue =
+      getCachedStorageValue(storage, WORKSPACE_STORAGE_KEY) ??
+      getCachedStorageValue(storage, LEGACY_WORKSPACE_STORAGE_KEY);
 
     if (!cachedValue) {
       return createInitialState();
@@ -45,8 +48,10 @@ export function loadWorkspaceState(storage: StorageLike): WorkspaceState {
 export function clearWorkspaceState(storage: StorageLike): void {
   try {
     storage.removeItem(WORKSPACE_STORAGE_KEY);
+    storage.removeItem(LEGACY_WORKSPACE_STORAGE_KEY);
   } finally {
     getStorageCache(storage).delete(WORKSPACE_STORAGE_KEY);
+    getStorageCache(storage).delete(LEGACY_WORKSPACE_STORAGE_KEY);
   }
 }
 

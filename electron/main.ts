@@ -20,7 +20,7 @@ interface MainStoreSchema {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const store = new Store<MainStoreSchema>({
-  name: 'yq-local-video-client',
+  name: 'yqhub',
   defaults: {
     accounts: [],
     secrets: {}
@@ -100,7 +100,7 @@ async function createWindow(): Promise<void> {
     height: 860,
     minWidth: 980,
     minHeight: 680,
-    title: '小云雀本地生成端',
+    title: 'YQhub',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

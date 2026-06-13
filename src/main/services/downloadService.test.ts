@@ -21,10 +21,10 @@ describe('download service', () => {
         taskId: 'remote-task-1',
         videoUrl: 'https://cdn.example.com/result.mp4'
       })
-    ).resolves.toBe('/Users/tester/Movies/YQ/exports/2026-06-13/remote-task-1.mp4');
+    ).resolves.toBe('/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4');
     expect(writes).toEqual([
       {
-        path: '/Users/tester/Movies/YQ/exports/2026-06-13/remote-task-1.mp4',
+        path: '/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4',
         bytes: new Uint8Array([1, 2, 3])
       }
     ]);

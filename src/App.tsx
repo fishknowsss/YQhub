@@ -329,8 +329,8 @@ function TopBar({ accountCount, currentAccountName, notice }: TopBarProps) {
   return (
     <header className="topbar">
       <div>
-        <p className="eyebrow">本地视频生成</p>
-        <h1>小云雀本地生成端</h1>
+        <p className="eyebrow">小云雀工作台</p>
+        <h1>YQhub</h1>
       </div>
       <div className="topbar-status">
         <StatusPill icon={<KeyRound size={16} />} label={currentAccountName} />
@@ -802,7 +802,7 @@ function advanceTasks(state: WorkspaceState): WorkspaceState {
             : task.videoUrl,
         localVideoPath:
           nextStatus === 'done'
-            ? `~/Movies/YQ/exports/${task.id}.mp4`
+            ? `~/Movies/YQhub/exports/${task.id}.mp4`
             : task.localVideoPath,
         updatedAt: new Date(0).toISOString()
       };

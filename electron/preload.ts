@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiAccount, ApiAccountInput, GenerationTask } from '../src/domain/types';
 
-export interface YqLocalApi {
+export interface YqhubLocalApi {
   listAccounts(): Promise<ApiAccount[]>;
   addAccount(input: ApiAccountInput): Promise<ApiAccount>;
   deleteAccount(accountId: string): Promise<void>;
@@ -9,7 +9,7 @@ export interface YqLocalApi {
   refreshTask(task: GenerationTask): Promise<GenerationTask>;
 }
 
-const api: YqLocalApi = {
+const api: YqhubLocalApi = {
   listAccounts: () => ipcRenderer.invoke('accounts:list'),
   addAccount: (input) => ipcRenderer.invoke('accounts:add', input),
   deleteAccount: (accountId) => ipcRenderer.invoke('accounts:delete', accountId),
@@ -17,4 +17,4 @@ const api: YqLocalApi = {
   refreshTask: (task) => ipcRenderer.invoke('tasks:refresh', task)
 };
 
-contextBridge.exposeInMainWorld('yqLocal', api);
+contextBridge.exposeInMainWorld('yqhub', api);

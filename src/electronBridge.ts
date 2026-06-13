@@ -1,6 +1,6 @@
 import type { ApiAccount, ApiAccountInput, GenerationTask } from './domain/types';
 
-export interface YqLocalApi {
+export interface YqhubLocalApi {
   listAccounts(): Promise<ApiAccount[]>;
   addAccount(input: ApiAccountInput): Promise<ApiAccount>;
   deleteAccount(accountId: string): Promise<void>;
@@ -10,14 +10,14 @@ export interface YqLocalApi {
 
 declare global {
   interface Window {
-    yqLocal?: YqLocalApi;
+    yqhub?: YqhubLocalApi;
   }
 }
 
-export function getNativeLocalApi(): YqLocalApi | null {
+export function getNativeLocalApi(): YqhubLocalApi | null {
   if (typeof window === 'undefined') {
     return null;
   }
 
-  return window.yqLocal ?? null;
+  return window.yqhub ?? null;
 }

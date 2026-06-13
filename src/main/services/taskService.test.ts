@@ -32,7 +32,7 @@ describe('task service', () => {
       downloadGeneratedVideo: async ({ taskId, videoUrl }) => {
         expect(taskId).toBe('remote-task-1');
         expect(videoUrl).toBe('https://cdn.example.com/result.mp4');
-        return '/Users/tester/Movies/YQ/exports/2026-06-13/remote-task-1.mp4';
+        return '/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4';
       }
     };
     const service = createTaskService({ accountService, client, downloadService });
@@ -43,7 +43,7 @@ describe('task service', () => {
       status: 'done',
       progress: 100,
       videoUrl: 'https://cdn.example.com/result.mp4',
-      localVideoPath: '/Users/tester/Movies/YQ/exports/2026-06-13/remote-task-1.mp4',
+      localVideoPath: '/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4',
       requestId: 'request-query-1'
     });
     expect(credentialCalls).toEqual([`${account.id}:ak-local:remote-task-1`]);

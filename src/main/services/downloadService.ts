@@ -30,7 +30,7 @@ export function createDownloadService(options: CreateDownloadServiceOptions = {}
       const outputPath = path.join(
         getHomeDir,
         'Movies',
-        'YQ',
+        'YQhub',
         'exports',
         dateSegment,
         `${sanitizeFileName(input.taskId)}.mp4`
