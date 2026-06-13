@@ -4,6 +4,7 @@ import {
   clearDraft,
   createGenerationTask,
   createInitialState,
+  isXiaoyunqueApiKey,
   selectAccount,
   updateDraft
 } from './state';
@@ -22,11 +23,11 @@ describe('workspace state', () => {
 
     state = addApiAccount(state, {
       name: '萧衍账号',
-      apiKey: 'ak-xiao'
+      apiKey: 'ak-xiaoUserKey1234567890'
     });
     state = addApiAccount(state, {
       name: '言笑账号',
-      apiKey: 'ak-yan'
+      apiKey: 'ak-yanUserKey1234567890'
     });
 
     const [xiao, yan] = state.accounts;
@@ -65,21 +66,33 @@ describe('workspace state', () => {
   it('stores only local key references on API accounts', () => {
     const state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      apiKey: 'ak-local-user-key'
+      apiKey: 'ak-localUserKey1234567890'
     });
 
     expect(state.accounts[0]).toMatchObject({
       name: '本地账号',
-      apiKeyPreview: 'ak-...-key'
+      apiKeyPreview: 'ak-...7890'
     });
     expect(state.accounts[0].apiKeyRef).toMatch(/^local-key:/);
-    expect(JSON.stringify(state.accounts[0])).not.toContain('ak-local-user-key');
+    expect(JSON.stringify(state.accounts[0])).not.toContain('ak-localUserKey1234567890');
+  });
+
+  it('accepts only Xiaoyunque-style ak API keys', () => {
+    expect(isXiaoyunqueApiKey('ak-localUserKey1234567890')).toBe(true);
+    expect(isXiaoyunqueApiKey('sk-localUserKey1234567890')).toBe(false);
+    expect(isXiaoyunqueApiKey('ak-short')).toBe(false);
+    expect(() =>
+      addApiAccount(createInitialState(), {
+        name: '错误账号',
+        apiKey: 'sk-localUserKey1234567890'
+      })
+    ).toThrow('只支持小云雀官网发放的 ak- API Key');
   });
 
   it('clears the current draft without deleting accounts or history', () => {
     let state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      apiKey: 'ak-local'
+      apiKey: 'ak-localUserKey1234567890'
     });
 
     state = updateDraft(state, {
@@ -106,7 +119,7 @@ describe('workspace state', () => {
   it('builds finalPrompt from the manual prompt and asset labels', () => {
     let state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      apiKey: 'ak-local'
+      apiKey: 'ak-localUserKey1234567890'
     });
 
     state = updateDraft(state, {

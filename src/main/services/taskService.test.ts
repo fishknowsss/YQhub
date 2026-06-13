@@ -10,7 +10,7 @@ describe('task service', () => {
     const accountService = createAccountService({ vault: createMemorySecretVault() });
     const account = accountService.addAccount({
       name: '剪辑账号',
-      apiKey: 'ak-local'
+      apiKey: 'ak-localUserKey1234567890'
     });
     const credentialCalls: string[] = [];
     const client: VideoTaskClient = {
@@ -45,7 +45,9 @@ describe('task service', () => {
       localVideoPath: '/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4',
       requestId: 'request-query-1'
     });
-    expect(credentialCalls).toEqual([`${account.id}:ak-local:remote-task-1:seedance2.0fast`]);
+    expect(credentialCalls).toEqual([
+      `${account.id}:ak-localUserKey1234567890:remote-task-1:seedance2.0fast`
+    ]);
   });
 });
 

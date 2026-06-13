@@ -30,7 +30,7 @@ describe('App', () => {
       target: { value: '萧衍账号' }
     });
     fireEvent.change(screen.getByLabelText('API Key'), {
-      target: { value: 'ak-xiao' }
+      target: { value: 'ak-xiaoUserKey1234567890' }
     });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
 
@@ -42,6 +42,36 @@ describe('App', () => {
     const taskPanel = screen.getByLabelText('任务区');
     expect(within(taskPanel).getByText('生成一条茶饮短片')).toBeInTheDocument();
     expect(within(taskPanel).getByText('萧衍账号')).toBeInTheDocument();
+  });
+
+  it('rejects API keys that are not Xiaoyunque ak keys', () => {
+    render(<App storage={createMemoryStorage()} />);
+
+    fireEvent.change(screen.getByLabelText('账号名'), {
+      target: { value: '错误账号' }
+    });
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'sk-not-from-xiaoyunque' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+
+    expect(screen.getByText('只支持小云雀官网发放的 ak- API Key')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前账号')).toHaveValue('');
+  });
+
+  it('keeps short ak keys out of the account list', () => {
+    render(<App storage={createMemoryStorage()} />);
+
+    fireEvent.change(screen.getByLabelText('账号名'), {
+      target: { value: '短 Key' }
+    });
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'ak-short' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+
+    expect(screen.getByText('只支持小云雀官网发放的 ak- API Key')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前账号')).toHaveValue('');
   });
 
   it('restores the last draft after reopening', async () => {
@@ -89,7 +119,7 @@ describe('App', () => {
       target: { value: '本机账号' }
     });
     fireEvent.change(screen.getByLabelText('API Key'), {
-      target: { value: 'ak-native' }
+      target: { value: 'ak-nativeUserKey1234567890' }
     });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
 
@@ -98,9 +128,9 @@ describe('App', () => {
     });
     expect(addAccount).toHaveBeenCalledWith({
       name: '本机账号',
-      apiKey: 'ak-native'
+      apiKey: 'ak-nativeUserKey1234567890'
     });
-    expect(storage.getItem('yqhub-workspace:v1')).not.toContain('ak-native');
+    expect(storage.getItem('yqhub-workspace:v1')).not.toContain('ak-nativeUserKey1234567890');
   });
 
   it('does not ask for public URLs before native submit', async () => {

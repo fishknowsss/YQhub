@@ -9,6 +9,8 @@ import type {
 
 const DEFAULT_RELAY_ENDPOINT = 'https://relay.yqhub.local';
 const DEFAULT_MODEL = 'seedance2.0fast';
+const XIAOYUNQUE_API_KEY_PATTERN = /^ak-[A-Za-z0-9_-]{12,}$/u;
+const XIAOYUNQUE_API_KEY_ERROR = '只支持小云雀官网发放的 ak- API Key';
 
 export function createInitialDraft(): DraftState {
   return {
@@ -31,6 +33,8 @@ export function createInitialState(): WorkspaceState {
 }
 
 export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): WorkspaceState {
+  assertXiaoyunqueApiKey(input.apiKey);
+
   const account: ApiAccount = {
     id: `account-${state.accounts.length + 1}`,
     name: input.name.trim() || '未命名账号',
@@ -48,6 +52,16 @@ export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): Wo
     accounts: [...state.accounts, account],
     currentAccountId: state.currentAccountId ?? account.id
   };
+}
+
+export function isXiaoyunqueApiKey(apiKey: string): boolean {
+  return XIAOYUNQUE_API_KEY_PATTERN.test(apiKey.trim());
+}
+
+export function assertXiaoyunqueApiKey(apiKey: string): void {
+  if (!isXiaoyunqueApiKey(apiKey)) {
+    throw new Error(XIAOYUNQUE_API_KEY_ERROR);
+  }
 }
 
 export function selectAccount(state: WorkspaceState, accountId: string): WorkspaceState {

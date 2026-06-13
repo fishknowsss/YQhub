@@ -8,22 +8,22 @@ describe('account service', () => {
 
     const account = service.addAccount({
       name: '剪辑账号',
-      apiKey: 'ak-local-user-key',
+      apiKey: 'ak-localUserKey1234567890',
       relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
 
     expect(account).toMatchObject({
       name: '剪辑账号',
-      apiKeyPreview: 'ak-...-key',
+      apiKeyPreview: 'ak-...7890',
       apiKeyRef: expect.stringMatching(/^vault:/),
       relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
-    expect(JSON.stringify(service.listAccounts())).not.toContain('ak-local-user-key');
+    expect(JSON.stringify(service.listAccounts())).not.toContain('ak-localUserKey1234567890');
     expect(service.getCredentials(account.id)).toMatchObject({
       accountId: account.id,
-      apiKey: 'ak-local-user-key',
+      apiKey: 'ak-localUserKey1234567890',
       relayEndpoint: 'https://relay.example.com'
     });
   });
@@ -36,14 +36,27 @@ describe('account service', () => {
 
     const firstAccount = firstUser.addAccount({
       name: '用户一',
-      apiKey: 'ak-one'
+      apiKey: 'ak-oneUserKey1234567890'
     });
     secondUser.addAccount({
       name: '用户二',
-      apiKey: 'ak-two'
+      apiKey: 'ak-twoUserKey1234567890'
     });
 
-    expect(firstVault.readSecret(firstAccount.apiKeyRef)).toBe('ak-one');
+    expect(firstVault.readSecret(firstAccount.apiKeyRef)).toBe('ak-oneUserKey1234567890');
     expect(() => secondVault.readSecret(firstAccount.apiKeyRef)).toThrow('密钥不存在');
+  });
+
+  it('rejects non-ak API keys before writing the vault', () => {
+    const vault = createMemorySecretVault();
+    const service = createAccountService({ vault });
+
+    expect(() =>
+      service.addAccount({
+        name: '错误账号',
+        apiKey: 'sk-localUserKey1234567890'
+      })
+    ).toThrow('只支持小云雀官网发放的 ak- API Key');
+    expect(service.listAccounts()).toEqual([]);
   });
 });

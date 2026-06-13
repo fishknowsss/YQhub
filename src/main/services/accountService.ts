@@ -1,5 +1,5 @@
 import type { ApiAccount, ApiAccountInput } from '../../domain/types';
-import { maskApiKey } from '../../domain/state';
+import { assertXiaoyunqueApiKey, maskApiKey } from '../../domain/state';
 
 export interface ApiCredentials {
   accountId: string;
@@ -38,6 +38,8 @@ export function createAccountService({
 
   return {
     addAccount(input) {
+      assertXiaoyunqueApiKey(input.apiKey);
+
       const account: ApiAccount = {
         id: `account-${accounts.length + 1}`,
         name: input.name.trim() || '未命名账号',

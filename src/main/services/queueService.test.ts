@@ -9,11 +9,11 @@ describe('queue service', () => {
     const accountService = createAccountService({ vault: createMemorySecretVault() });
     const firstAccount = accountService.addAccount({
       name: '萧衍账号',
-      apiKey: 'ak-xiao'
+      apiKey: 'ak-xiaoUserKey1234567890'
     });
     const secondAccount = accountService.addAccount({
       name: '言笑账号',
-      apiKey: 'ak-yan'
+      apiKey: 'ak-yanUserKey1234567890'
     });
     const calls: string[] = [];
     const client: VideoClient = {
@@ -36,7 +36,7 @@ describe('queue service', () => {
       apiTaskId: 'remote-task-1',
       requestId: 'request-1'
     });
-    expect(calls).toEqual([`${firstAccount.id}:ak-xiao`]);
+    expect(calls).toEqual([`${firstAccount.id}:ak-xiaoUserKey1234567890`]);
   });
 });
 

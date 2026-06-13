@@ -22,6 +22,7 @@ import {
   clearDraft,
   createGenerationTask,
   createInitialState,
+  isXiaoyunqueApiKey,
   selectAccount,
   updateDraft
 } from './domain/state';
@@ -147,13 +148,23 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         return;
       }
 
+      if (!isXiaoyunqueApiKey(accountForm.apiKey)) {
+        setNotice('只支持小云雀官网发放的 ak- API Key');
+        return;
+      }
+
       if (nativeApi) {
-        const account = await nativeApi.addAccount(accountForm);
-        setState((current) => ({
-          ...current,
-          accounts: [...current.accounts, account],
-          currentAccountId: current.currentAccountId ?? account.id
-        }));
+        try {
+          const account = await nativeApi.addAccount(accountForm);
+          setState((current) => ({
+            ...current,
+            accounts: [...current.accounts, account],
+            currentAccountId: current.currentAccountId ?? account.id
+          }));
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : '账号添加失败');
+          return;
+        }
       } else {
         setState((current) => addApiAccount(current, accountForm));
       }
@@ -432,7 +443,7 @@ function AccountBox({
             name="apiKey"
             value={accountForm.apiKey}
             onChange={onAccountField}
-            placeholder="AK..."
+            placeholder="ak-..."
           />
         </label>
         <button className="secondary-button" type="submit">
