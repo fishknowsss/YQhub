@@ -9,18 +9,16 @@ describe('queue service', () => {
     const accountService = createAccountService({ vault: createMemorySecretVault() });
     const firstAccount = accountService.addAccount({
       name: '萧衍账号',
-      accessKeyId: 'ak-xiao',
-      secretAccessKey: 'sk-xiao'
+      apiKey: 'ak-xiao'
     });
     const secondAccount = accountService.addAccount({
       name: '言笑账号',
-      accessKeyId: 'ak-yan',
-      secretAccessKey: 'sk-yan'
+      apiKey: 'ak-yan'
     });
     const calls: string[] = [];
     const client: VideoClient = {
       submitTask: async ({ credentials }) => {
-        calls.push(`${credentials.accountId}:${credentials.accessKeyId}:${credentials.secretAccessKey}`);
+        calls.push(`${credentials.accountId}:${credentials.apiKey}`);
         return {
           apiTaskId: 'remote-task-1',
           requestId: 'request-1',
@@ -38,7 +36,7 @@ describe('queue service', () => {
       apiTaskId: 'remote-task-1',
       requestId: 'request-1'
     });
-    expect(calls).toEqual([`${firstAccount.id}:ak-xiao:sk-xiao`]);
+    expect(calls).toEqual([`${firstAccount.id}:ak-xiao`]);
   });
 });
 
@@ -55,13 +53,14 @@ function createTaskForAccount(accountId: string): GenerationTask {
         label: '图一是产品',
         localName: 'product.png',
         previewUrl: 'blob:product',
-        publicUrl: 'https://cdn.example.com/product.png',
-        uploadStatus: 'uploaded'
+        dataUrl: 'data:image/png;base64,ZmFrZQ==',
+        mimeType: 'image/png',
+        uploadStatus: 'local'
       }
     ],
-    duration: '5s',
+    duration: '～15s',
     resolution: '16:9',
-    model: 'pippit_iv2v_cvtob_master',
+    model: 'seedance2.0fast',
     status: 'in_queue',
     progress: 10,
     etaSeconds: null,

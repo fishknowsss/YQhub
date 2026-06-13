@@ -9,18 +9,24 @@ import {
 } from './state';
 
 describe('workspace state', () => {
+  it('starts with seedance2.0fast and documented default parameters', () => {
+    expect(createInitialState().draft).toMatchObject({
+      model: 'seedance2.0fast',
+      duration: '～15s',
+      resolution: '16:9'
+    });
+  });
+
   it('binds every generation task to the selected local API account', () => {
     let state = createInitialState();
 
     state = addApiAccount(state, {
       name: '萧衍账号',
-      accessKeyId: 'ak-xiao',
-      secretAccessKey: 'secret-xiao'
+      apiKey: 'ak-xiao'
     });
     state = addApiAccount(state, {
       name: '言笑账号',
-      accessKeyId: 'ak-yan',
-      secretAccessKey: 'secret-yan'
+      apiKey: 'ak-yan'
     });
 
     const [xiao, yan] = state.accounts;
@@ -56,26 +62,24 @@ describe('workspace state', () => {
     });
   });
 
-  it('stores only secret references on API accounts', () => {
+  it('stores only local key references on API accounts', () => {
     const state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'plain-secret'
+      apiKey: 'ak-local-user-key'
     });
 
     expect(state.accounts[0]).toMatchObject({
       name: '本地账号',
-      accessKeyId: 'ak-local'
+      apiKeyPreview: 'ak-...-key'
     });
-    expect(state.accounts[0].secretAccessKeyRef).toMatch(/^local-secret:/);
-    expect(JSON.stringify(state.accounts[0])).not.toContain('plain-secret');
+    expect(state.accounts[0].apiKeyRef).toMatch(/^local-key:/);
+    expect(JSON.stringify(state.accounts[0])).not.toContain('ak-local-user-key');
   });
 
   it('clears the current draft without deleting accounts or history', () => {
     let state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'plain-secret'
+      apiKey: 'ak-local'
     });
 
     state = updateDraft(state, {
@@ -102,8 +106,7 @@ describe('workspace state', () => {
   it('builds finalPrompt from the manual prompt and asset labels', () => {
     let state = addApiAccount(createInitialState(), {
       name: '本地账号',
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'plain-secret'
+      apiKey: 'ak-local'
     });
 
     state = updateDraft(state, {

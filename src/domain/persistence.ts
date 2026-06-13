@@ -1,4 +1,5 @@
 import { createInitialState } from './state';
+import { getDefaultModelCapabilities, isModelId, MODEL_CAPABILITIES } from '../shared/modelCapabilities';
 import type { WorkspaceState } from './types';
 
 export const WORKSPACE_STORAGE_KEY = 'yqhub-workspace:v1';
@@ -39,7 +40,7 @@ export function loadWorkspaceState(storage: StorageLike): WorkspaceState {
       return createInitialState();
     }
 
-    return parsed;
+    return normalizeWorkspaceState(parsed);
   } catch {
     return createInitialState();
   }
@@ -89,4 +90,29 @@ function getStorageCache(storage: StorageLike): Map<string, string | null> {
   const next = new Map<string, string | null>();
   storageCache.set(storage, next);
   return next;
+}
+
+function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
+  const defaultModel = getDefaultModelCapabilities();
+  const model = isModelId(state.draft.model) ? state.draft.model : defaultModel.model;
+  const capabilities = MODEL_CAPABILITIES[model];
+  const normalizedModel =
+    capabilities.submitMappingStatus === 'known' ? model : defaultModel.model;
+  const normalizedCapabilities = MODEL_CAPABILITIES[normalizedModel];
+  const durationOptions: string[] = [...normalizedCapabilities.supportedDurations];
+  const resolutionOptions: string[] = [...normalizedCapabilities.supportedResolutions];
+
+  return {
+    ...state,
+    draft: {
+      ...state.draft,
+      model: normalizedModel,
+      duration: durationOptions.includes(state.draft.duration)
+        ? state.draft.duration
+        : defaultModel.supportedDurations[0],
+      resolution: resolutionOptions.includes(state.draft.resolution)
+        ? state.draft.resolution
+        : defaultModel.supportedResolutions[0]
+    }
+  };
 }

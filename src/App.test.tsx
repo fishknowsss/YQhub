@@ -16,7 +16,8 @@ describe('App', () => {
     expect(screen.getByLabelText('提示词')).toBeInTheDocument();
     expect(screen.getByLabelText('时长')).toBeInTheDocument();
     expect(screen.getByLabelText('分辨率')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '4 秒' })).toBeInTheDocument();
+    expect(screen.getByLabelText('模型')).toHaveValue('seedance2.0fast');
+    expect(screen.getByRole('option', { name: '约 15 秒' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '16:9' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
     expect(screen.getByText('生成后会显示进度')).toBeInTheDocument();
@@ -28,11 +29,8 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('账号名'), {
       target: { value: '萧衍账号' }
     });
-    fireEvent.change(screen.getByLabelText('Access Key'), {
+    fireEvent.change(screen.getByLabelText('API Key'), {
       target: { value: 'ak-xiao' }
-    });
-    fireEvent.change(screen.getByLabelText('Secret Key'), {
-      target: { value: 'secret-xiao' }
     });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
 
@@ -64,16 +62,14 @@ describe('App', () => {
     expect(screen.getByLabelText('提示词')).toHaveValue('刷新后仍然保留这段提示词');
   });
 
-  it('uses the native account API in Electron without persisting the raw secret in renderer storage', async () => {
+  it('uses the native account API in Electron without persisting the raw key in renderer storage', async () => {
     const storage = createMemoryStorage();
     const addAccount = vi.fn(async () => ({
       id: 'native-account-1',
       name: '本机账号',
-      accessKeyId: 'ak-native',
-      secretAccessKeyRef: 'electron-safe:native',
-      endpoint: 'https://visual.volcengineapi.com',
-      region: 'cn-north-1',
-      service: 'cv',
+      apiKeyPreview: 'ak-...tive',
+      apiKeyRef: 'electron-safe:native',
+      relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1,
       enabled: true,
       createdAt: '2026-06-13T00:00:00.000Z',
@@ -92,11 +88,8 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('账号名'), {
       target: { value: '本机账号' }
     });
-    fireEvent.change(screen.getByLabelText('Access Key'), {
+    fireEvent.change(screen.getByLabelText('API Key'), {
       target: { value: 'ak-native' }
-    });
-    fireEvent.change(screen.getByLabelText('Secret Key'), {
-      target: { value: 'sk-native' }
     });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
 
@@ -105,25 +98,27 @@ describe('App', () => {
     });
     expect(addAccount).toHaveBeenCalledWith({
       name: '本机账号',
-      accessKeyId: 'ak-native',
-      secretAccessKey: 'sk-native'
+      apiKey: 'ak-native'
     });
-    expect(storage.getItem('yqhub-workspace:v1')).not.toContain('sk-native');
+    expect(storage.getItem('yqhub-workspace:v1')).not.toContain('ak-native');
   });
 
-  it('blocks native submit when a reference asset has no public URL', async () => {
+  it('does not ask for public URLs before native submit', async () => {
     const storage = createMemoryStorage();
     window.URL.createObjectURL = vi.fn(() => 'blob:asset');
+    const submitTask = vi.fn(async (task) => ({
+      ...task,
+      apiTaskId: 'remote-task-1',
+      requestId: 'request-1'
+    }));
     window.yqhub = {
       listAccounts: vi.fn(async () => [
         {
           id: 'native-account-1',
           name: '本机账号',
-          accessKeyId: 'ak-native',
-          secretAccessKeyRef: 'electron-safe:native',
-          endpoint: 'https://visual.volcengineapi.com',
-          region: 'cn-north-1',
-          service: 'cv',
+          apiKeyPreview: 'ak-...tive',
+          apiKeyRef: 'electron-safe:native',
+          relayEndpoint: 'https://relay.example.com',
           concurrencyLimit: 1,
           enabled: true,
           createdAt: '2026-06-13T00:00:00.000Z',
@@ -132,7 +127,7 @@ describe('App', () => {
       ]),
       addAccount: vi.fn(),
       deleteAccount: vi.fn(async () => undefined),
-      submitTask: vi.fn(),
+      submitTask,
       refreshTask: vi.fn()
     };
 
@@ -150,16 +145,15 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('提示词'), {
       target: { value: '生成一条茶饮短片' }
     });
-    fireEvent.change(screen.getByLabelText('模型'), {
-      target: { value: 'pippit_iv2v_cvtob_master' }
-    });
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
-    expect(await screen.findByText('请先配置素材上传方式')).toBeInTheDocument();
-    expect(window.yqhub.submitTask).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalled();
+    });
+    expect(screen.queryByLabelText('图一公网 URL')).not.toBeInTheDocument();
   });
 
-  it('submits a native task when assets have public URLs', async () => {
+  it('submits a native task with local asset data for relay upload', async () => {
     const storage = createMemoryStorage();
     window.URL.createObjectURL = vi.fn(() => 'blob:asset');
     const submitTask = vi.fn(async (task) => ({
@@ -172,11 +166,9 @@ describe('App', () => {
         {
           id: 'native-account-1',
           name: '本机账号',
-          accessKeyId: 'ak-native',
-          secretAccessKeyRef: 'electron-safe:native',
-          endpoint: 'https://visual.volcengineapi.com',
-          region: 'cn-north-1',
-          service: 'cv',
+          apiKeyPreview: 'ak-...tive',
+          apiKeyRef: 'electron-safe:native',
+          relayEndpoint: 'https://relay.example.com',
           concurrencyLimit: 1,
           enabled: true,
           createdAt: '2026-06-13T00:00:00.000Z',
@@ -199,14 +191,9 @@ describe('App', () => {
         files: [new File(['fake'], 'product.png', { type: 'image/png' })]
       }
     });
-    fireEvent.change(screen.getByLabelText('图一公网 URL'), {
-      target: { value: 'https://cdn.example.com/product.png' }
-    });
+    await screen.findByText('图一');
     fireEvent.change(screen.getByLabelText('提示词'), {
       target: { value: '生成一条茶饮短片' }
-    });
-    fireEvent.change(screen.getByLabelText('模型'), {
-      target: { value: 'pippit_iv2v_cvtob_master' }
     });
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
@@ -215,10 +202,10 @@ describe('App', () => {
         expect.objectContaining({
           accountId: 'native-account-1',
           prompt: '生成一条茶饮短片',
-          model: 'pippit_iv2v_cvtob_master',
+          model: 'seedance2.0fast',
           assets: [
             expect.objectContaining({
-              publicUrl: 'https://cdn.example.com/product.png'
+              dataUrl: expect.stringMatching(/^data:image\/png;base64,/)
             })
           ]
         })

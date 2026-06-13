@@ -2,24 +2,13 @@ export const MODEL_CAPABILITIES = {
   'seedance2.0fast': {
     model: 'seedance2.0fast',
     displayName: 'Seedance 2.0 Fast',
+    reqKey: 'pippit_iv2v_v20_cvtob_with_vinput',
     supportsPrompt: true,
     supportsImageReference: true,
-    supportsVideoReference: false,
+    supportsVideoReference: true,
     supportsAudioReference: false,
-    supportedDurations: [4, 5, 8, 10, 15],
-    supportedResolutions: ['16:9', '9:16', '1:1'],
-    submitMappingStatus: 'pending-docs'
-  },
-  pippit_iv2v_cvtob_master: {
-    model: 'pippit_iv2v_cvtob_master',
-    displayName: '小云雀营销成片 Agent',
-    reqKey: 'pippit_iv2v_cvtob_master',
-    supportsPrompt: false,
-    supportsImageReference: true,
-    supportsVideoReference: false,
-    supportsAudioReference: false,
-    supportedDurations: [],
-    supportedResolutions: [],
+    supportedDurations: ['～15s', '～30s', '40～60s'],
+    supportedResolutions: ['16:9', '9:16', '4:3', '3:4'],
     submitMappingStatus: 'known'
   }
 } as const;

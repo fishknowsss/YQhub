@@ -6,21 +6,13 @@ import {
 } from './volcengineClient';
 
 describe('volcengine submit payload', () => {
-  it('does not invent submit fields for seedance2.0fast while docs are incomplete', () => {
-    expect(() =>
-      buildSubmitPayload({
-        model: 'seedance2.0fast',
-        productName: '茶饮',
-        assets: []
-      })
-    ).toThrow('当前模型接口字段未配置，请补充接口文档后再提交');
-  });
-
   it('rejects local assets that do not have a public URL', () => {
     expect(() =>
       buildSubmitPayload({
-        model: 'pippit_iv2v_cvtob_master',
-        productName: '茶饮',
+        model: 'seedance2.0fast',
+        prompt: '茶饮',
+        duration: '～15s',
+        resolution: '16:9',
         assets: [
           {
             id: 'asset-1',
@@ -35,11 +27,13 @@ describe('volcengine submit payload', () => {
     ).toThrow('请先配置素材上传方式，或粘贴公网图片链接。');
   });
 
-  it('maps the known 小云雀营销成片 Agent fields from public image URLs', () => {
+  it('maps seedance2.0fast to the documented 小云雀智能生视频 2.0 fields', () => {
     expect(
       buildSubmitPayload({
-        model: 'pippit_iv2v_cvtob_master',
-        productName: '茶饮',
+        model: 'seedance2.0fast',
+        prompt: '生成一条茶饮短片\n\n图一是产品\n视频一是动作参考',
+        duration: '～15s',
+        resolution: '9:16',
         assets: [
           {
             id: 'asset-1',
@@ -52,20 +46,23 @@ describe('volcengine submit payload', () => {
           },
           {
             id: 'asset-2',
-            type: 'image',
-            label: '图二是模特',
-            localName: 'model.png',
-            previewUrl: 'blob:model',
-            publicUrl: 'https://cdn.example.com/model.png',
+            type: 'video',
+            label: '视频一是动作参考',
+            localName: 'motion.mp4',
+            previewUrl: 'blob:motion',
+            publicUrl: 'https://cdn.example.com/motion.mp4',
             uploadStatus: 'uploaded'
           }
         ]
       })
     ).toEqual({
-      req_key: 'pippit_iv2v_cvtob_master',
-      product_name: '茶饮',
-      product_img_url_list: ['https://cdn.example.com/product.png'],
-      model_img_url_list: ['https://cdn.example.com/model.png']
+      req_key: 'pippit_iv2v_v20_cvtob_with_vinput',
+      prompt: '生成一条茶饮短片\n\n图一是产品\n视频一是动作参考',
+      img_url_list: ['https://cdn.example.com/product.png'],
+      video_url_list: ['https://cdn.example.com/motion.mp4'],
+      ratio: '9:16',
+      duration: '～15s',
+      language: 'Chinese'
     });
   });
 
@@ -81,7 +78,7 @@ describe('volcengine submit payload', () => {
         region: 'cn-north-1',
         service: 'cv'
       },
-      body: { req_key: 'pippit_iv2v_cvtob_master' },
+      body: { req_key: 'pippit_iv2v_v20_cvtob_with_vinput' },
       now: new Date('2026-06-13T08:00:00.000Z')
     });
 
@@ -89,7 +86,7 @@ describe('volcengine submit payload', () => {
       'https://visual.volcengineapi.com/?Action=CVSync2AsyncSubmitTask&Version=2022-08-31'
     );
     expect(request.init.method).toBe('POST');
-    expect(request.init.body).toBe('{"req_key":"pippit_iv2v_cvtob_master"}');
+    expect(request.init.body).toBe('{"req_key":"pippit_iv2v_v20_cvtob_with_vinput"}');
     expect(request.init.headers).toMatchObject({
       'content-type': 'application/json',
       host: 'visual.volcengineapi.com',
@@ -131,9 +128,12 @@ describe('volcengine submit payload', () => {
           service: 'cv'
         },
         payload: {
-          req_key: 'pippit_iv2v_cvtob_master',
-          product_name: '茶饮',
-          product_img_url_list: ['https://cdn.example.com/product.png']
+          req_key: 'pippit_iv2v_v20_cvtob_with_vinput',
+          prompt: '茶饮',
+          img_url_list: ['https://cdn.example.com/product.png'],
+          ratio: '16:9',
+          duration: '～15s',
+          language: 'Chinese'
         },
         task: undefined
       })
@@ -175,7 +175,8 @@ describe('volcengine submit payload', () => {
           region: 'cn-north-1',
           service: 'cv'
         },
-        apiTaskId: 'remote-task-1'
+        apiTaskId: 'remote-task-1',
+        reqKey: 'pippit_iv2v_v20_cvtob_with_vinput'
       })
     ).resolves.toEqual({
       requestId: 'request-query-1',

@@ -1,11 +1,9 @@
 import type { GenerationTask, TaskStatus } from '../../domain/types';
-import { buildSubmitPayload } from '../../services/volcengineClient';
 import { isModelId } from '../../shared/modelCapabilities';
 import type { ApiCredentials, AccountService } from './accountService';
 
 export interface SubmitTaskInput {
   credentials: ApiCredentials;
-  payload: ReturnType<typeof buildSubmitPayload>;
   task: GenerationTask;
 }
 
@@ -39,14 +37,8 @@ export function createQueueService({
       }
 
       const credentials = accountService.getCredentials(task.accountId);
-      const payload = buildSubmitPayload({
-        model: task.model,
-        productName: task.prompt,
-        assets: task.assets
-      });
       const result = await client.submitTask({
         credentials,
-        payload,
         task
       });
 

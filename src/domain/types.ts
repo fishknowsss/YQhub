@@ -15,6 +15,8 @@ export interface AssetReference {
   label: string;
   localName: string;
   previewUrl: string;
+  dataUrl?: string;
+  mimeType?: string;
   publicUrl?: string;
   uploadStatus?: 'local' | 'uploaded' | 'failed';
 }
@@ -22,11 +24,9 @@ export interface AssetReference {
 export interface ApiAccount {
   id: string;
   name: string;
-  accessKeyId: string;
-  secretAccessKeyRef: string;
-  endpoint: string;
-  region: string;
-  service: string;
+  apiKeyPreview: string;
+  apiKeyRef: string;
+  relayEndpoint: string;
   concurrencyLimit: number;
   enabled: boolean;
   createdAt: string;
@@ -35,11 +35,8 @@ export interface ApiAccount {
 
 export interface ApiAccountInput {
   name: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  endpoint?: string;
-  region?: string;
-  service?: string;
+  apiKey: string;
+  relayEndpoint?: string;
   concurrencyLimit?: number;
 }
 

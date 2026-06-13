@@ -7,16 +7,14 @@ import type {
   WorkspaceState
 } from './types';
 
-const DEFAULT_ENDPOINT = 'https://visual.volcengineapi.com';
-const DEFAULT_REGION = 'cn-north-1';
-const DEFAULT_SERVICE = 'cv';
+const DEFAULT_RELAY_ENDPOINT = 'https://relay.yqhub.local';
 const DEFAULT_MODEL = 'seedance2.0fast';
 
 export function createInitialDraft(): DraftState {
   return {
     prompt: '',
     assets: [],
-    duration: '5s',
+    duration: '～15s',
     resolution: '16:9',
     model: DEFAULT_MODEL
   };
@@ -36,11 +34,9 @@ export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): Wo
   const account: ApiAccount = {
     id: `account-${state.accounts.length + 1}`,
     name: input.name.trim() || '未命名账号',
-    accessKeyId: input.accessKeyId.trim(),
-    secretAccessKeyRef: createSecretReference(input),
-    endpoint: DEFAULT_ENDPOINT,
-    region: DEFAULT_REGION,
-    service: DEFAULT_SERVICE,
+    apiKeyPreview: maskApiKey(input.apiKey),
+    apiKeyRef: createKeyReference(input),
+    relayEndpoint: input.relayEndpoint ?? DEFAULT_RELAY_ENDPOINT,
     concurrencyLimit: input.concurrencyLimit ?? 1,
     enabled: true,
     createdAt: new Date(0).toISOString(),
@@ -134,13 +130,23 @@ export function buildFinalPrompt(prompt: string, assets: AssetReference[]): stri
   return `${cleanPrompt}\n\n${labels.join('\n')}`;
 }
 
-function createSecretReference(input: ApiAccountInput): string {
-  const source = `${input.accessKeyId}:${input.name}:${input.secretAccessKey.length}`;
+function createKeyReference(input: ApiAccountInput): string {
+  const source = `${input.apiKey}:${input.name}`;
   let hash = 0;
 
   for (let index = 0; index < source.length; index += 1) {
     hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
   }
 
-  return `local-secret:${hash.toString(16).padStart(8, '0')}`;
+  return `local-key:${hash.toString(16).padStart(8, '0')}`;
+}
+
+export function maskApiKey(apiKey: string): string {
+  const value = apiKey.trim();
+
+  if (value.length <= 8) {
+    return value ? '已保存' : '';
+  }
+
+  return `${value.slice(0, 3)}...${value.slice(-4)}`;
 }

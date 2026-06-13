@@ -2,31 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { createAccountService, createMemorySecretVault } from './accountService';
 
 describe('account service', () => {
-  it('keeps Secret Access Key in the local vault and exposes only account metadata', () => {
+  it('keeps user API key in the local vault and exposes only account metadata', () => {
     const vault = createMemorySecretVault();
     const service = createAccountService({ vault });
 
     const account = service.addAccount({
       name: '剪辑账号',
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'sk-local',
-      endpoint: 'https://visual.volcengineapi.com',
-      region: 'cn-north-1',
-      service: 'cv',
+      apiKey: 'ak-local-user-key',
+      relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
 
     expect(account).toMatchObject({
       name: '剪辑账号',
-      accessKeyId: 'ak-local',
-      secretAccessKeyRef: expect.stringMatching(/^vault:/),
+      apiKeyPreview: 'ak-...-key',
+      apiKeyRef: expect.stringMatching(/^vault:/),
+      relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
-    expect(JSON.stringify(service.listAccounts())).not.toContain('sk-local');
+    expect(JSON.stringify(service.listAccounts())).not.toContain('ak-local-user-key');
     expect(service.getCredentials(account.id)).toMatchObject({
       accountId: account.id,
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'sk-local'
+      apiKey: 'ak-local-user-key',
+      relayEndpoint: 'https://relay.example.com'
     });
   });
 
@@ -38,16 +36,14 @@ describe('account service', () => {
 
     const firstAccount = firstUser.addAccount({
       name: '用户一',
-      accessKeyId: 'ak-one',
-      secretAccessKey: 'sk-one'
+      apiKey: 'ak-one'
     });
     secondUser.addAccount({
       name: '用户二',
-      accessKeyId: 'ak-two',
-      secretAccessKey: 'sk-two'
+      apiKey: 'ak-two'
     });
 
-    expect(firstVault.readSecret(firstAccount.secretAccessKeyRef)).toBe('sk-one');
-    expect(() => secondVault.readSecret(firstAccount.secretAccessKeyRef)).toThrow('密钥不存在');
+    expect(firstVault.readSecret(firstAccount.apiKeyRef)).toBe('ak-one');
+    expect(() => secondVault.readSecret(firstAccount.apiKeyRef)).toThrow('密钥不存在');
   });
 });

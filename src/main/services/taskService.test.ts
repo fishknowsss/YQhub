@@ -10,16 +10,15 @@ describe('task service', () => {
     const accountService = createAccountService({ vault: createMemorySecretVault() });
     const account = accountService.addAccount({
       name: '剪辑账号',
-      accessKeyId: 'ak-local',
-      secretAccessKey: 'sk-local'
+      apiKey: 'ak-local'
     });
     const credentialCalls: string[] = [];
     const client: VideoTaskClient = {
       submitTask: async () => {
         throw new Error('not used');
       },
-      getTaskResult: async ({ credentials, apiTaskId }) => {
-        credentialCalls.push(`${credentials.accountId}:${credentials.accessKeyId}:${apiTaskId}`);
+      getTaskResult: async ({ credentials, task }) => {
+        credentialCalls.push(`${credentials.accountId}:${credentials.apiKey}:${task.apiTaskId}:${task.model}`);
         return {
           requestId: 'request-query-1',
           status: 'done',
@@ -46,7 +45,7 @@ describe('task service', () => {
       localVideoPath: '/Users/tester/Movies/YQhub/exports/2026-06-13/remote-task-1.mp4',
       requestId: 'request-query-1'
     });
-    expect(credentialCalls).toEqual([`${account.id}:ak-local:remote-task-1`]);
+    expect(credentialCalls).toEqual([`${account.id}:ak-local:remote-task-1:seedance2.0fast`]);
   });
 });
 
@@ -63,13 +62,14 @@ function createRemoteTask(accountId: string): GenerationTask {
         label: '图一是产品',
         localName: 'product.png',
         previewUrl: 'blob:product',
-        publicUrl: 'https://cdn.example.com/product.png',
-        uploadStatus: 'uploaded'
+        dataUrl: 'data:image/png;base64,ZmFrZQ==',
+        mimeType: 'image/png',
+        uploadStatus: 'local'
       }
     ],
-    duration: '5s',
+    duration: '～15s',
     resolution: '16:9',
-    model: 'pippit_iv2v_cvtob_master',
+    model: 'seedance2.0fast',
     status: 'generating',
     progress: 72,
     etaSeconds: 20,

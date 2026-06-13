@@ -43,8 +43,7 @@ interface AccountFormState extends ApiAccountInput {}
 
 const DEFAULT_ACCOUNT_FORM: AccountFormState = {
   name: '',
-  accessKeyId: '',
-  secretAccessKey: ''
+  apiKey: ''
 };
 
 function getBrowserStorage(): StorageLike {
@@ -143,7 +142,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
-      if (!accountForm.name.trim() || !accountForm.accessKeyId.trim() || !accountForm.secretAccessKey) {
+      if (!accountForm.name.trim() || !accountForm.apiKey.trim()) {
         setNotice('请补全账号');
         return;
       }
@@ -187,11 +186,6 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
-    if (nativeApi && state.draft.assets.some((asset) => !asset.publicUrl?.trim())) {
-      setNotice('请先配置素材上传方式');
-      return;
-    }
-
     if (nativeApi) {
       const nextState = createGenerationTask(state);
       const task = nextState.tasks.at(-1);
@@ -225,20 +219,24 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, []);
 
   const handleFiles = useCallback((files: FileList | File[]) => {
-    const nextAssets = Array.from(files)
+    const supportedFiles = Array.from(files)
       .filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/'))
-      .map((file, index) => createAssetReference(file, index));
+      .slice(0, 8);
 
-    if (nextAssets.length === 0) {
+    if (supportedFiles.length === 0) {
       setNotice('素材格式不支持');
       return;
     }
 
-    setState((current) =>
-      updateDraft(current, {
-        assets: [...current.draft.assets, ...nextAssets]
+    void Promise.all(supportedFiles.map((file, index) => createAssetReference(file, index)))
+      .then((nextAssets) => {
+        setState((current) =>
+          updateDraft(current, {
+            assets: [...current.draft.assets, ...nextAssets]
+          })
+        );
       })
-    );
+      .catch(() => setNotice('素材读取失败'));
   }, []);
 
   const handleDrop = useCallback(
@@ -273,22 +271,6 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     );
   }, []);
 
-  const handleAssetPublicUrl = useCallback((assetId: string, publicUrl: string) => {
-    setState((current) =>
-      updateDraft(current, {
-        assets: current.draft.assets.map((asset) =>
-          asset.id === assetId
-            ? {
-                ...asset,
-                publicUrl,
-                uploadStatus: publicUrl.trim() ? 'uploaded' : 'local'
-              }
-            : asset
-        )
-      })
-    );
-  }, []);
-
   return (
     <main className="app-shell">
       <TopBar
@@ -305,7 +287,6 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           onAccountField={handleAccountField}
           onAddAccount={handleAddAccount}
           onAssetLabel={handleAssetLabel}
-          onAssetPublicUrl={handleAssetPublicUrl}
           onClearDraft={handleClearDraft}
           onDraftField={handleDraftField}
           onDrop={handleDrop}
@@ -363,7 +344,6 @@ interface ComposePanelProps {
   onAccountField: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddAccount: (event: FormEvent<HTMLFormElement>) => void;
   onAssetLabel: (assetId: string, label: string) => void;
-  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
   onClearDraft: () => void;
   onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
@@ -380,7 +360,6 @@ function ComposePanel({
   onAccountField,
   onAddAccount,
   onAssetLabel,
-  onAssetPublicUrl,
   onClearDraft,
   onDraftField,
   onDrop,
@@ -399,7 +378,7 @@ function ComposePanel({
         onSelectAccount={onSelectAccount}
       />
       <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
-      <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} onAssetPublicUrl={onAssetPublicUrl} />
+      <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} />
       <PromptEditor draft={draft} onDraftField={onDraftField} />
       <GenerateBar onClearDraft={onClearDraft} onGenerate={onGenerate} />
     </section>
@@ -448,22 +427,12 @@ function AccountBox({
           <input name="name" value={accountForm.name} onChange={onAccountField} placeholder="剪辑账号" />
         </label>
         <label>
-          <span>Access Key</span>
+          <span>API Key</span>
           <input
-            name="accessKeyId"
-            value={accountForm.accessKeyId}
+            name="apiKey"
+            value={accountForm.apiKey}
             onChange={onAccountField}
             placeholder="AK..."
-          />
-        </label>
-        <label>
-          <span>Secret Key</span>
-          <input
-            name="secretAccessKey"
-            value={accountForm.secretAccessKey}
-            onChange={onAccountField}
-            placeholder="SK..."
-            type="password"
           />
         </label>
         <button className="secondary-button" type="submit">
@@ -502,10 +471,9 @@ function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
 interface AssetGridProps {
   assets: AssetReference[];
   onAssetLabel: (assetId: string, label: string) => void;
-  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
 }
 
-function AssetGrid({ assets, onAssetLabel, onAssetPublicUrl }: AssetGridProps) {
+function AssetGrid({ assets, onAssetLabel }: AssetGridProps) {
   if (assets.length === 0) {
     return <div className="empty-line">添加素材后可写标注</div>;
   }
@@ -518,7 +486,6 @@ function AssetGrid({ assets, onAssetLabel, onAssetPublicUrl }: AssetGridProps) {
           index={index}
           key={asset.id}
           onAssetLabel={onAssetLabel}
-          onAssetPublicUrl={onAssetPublicUrl}
         />
       ))}
     </div>
@@ -529,10 +496,9 @@ interface AssetCardProps {
   asset: AssetReference;
   index: number;
   onAssetLabel: (assetId: string, label: string) => void;
-  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
 }
 
-function AssetCard({ asset, index, onAssetLabel, onAssetPublicUrl }: AssetCardProps) {
+function AssetCard({ asset, index, onAssetLabel }: AssetCardProps) {
   const labelPrefix = getAssetLabelPrefix(asset.type, index);
 
   return (
@@ -548,15 +514,6 @@ function AssetCard({ asset, index, onAssetLabel, onAssetPublicUrl }: AssetCardPr
           placeholder={`${labelPrefix}是...`}
         />
       </label>
-      <label>
-        <span>公网 URL</span>
-        <input
-          aria-label={`${labelPrefix}公网 URL`}
-          value={asset.publicUrl ?? ''}
-          onChange={(event) => onAssetPublicUrl(asset.id, event.target.value)}
-          placeholder="https://..."
-        />
-      </label>
     </article>
   );
 }
@@ -568,6 +525,9 @@ interface PromptEditorProps {
 
 function PromptEditor({ draft, onDraftField }: PromptEditorProps) {
   const defaultModel = getDefaultModelCapabilities();
+  const selectableModels = Object.values(MODEL_CAPABILITIES).filter(
+    (model) => model.submitMappingStatus === 'known'
+  );
 
   return (
     <section className="panel-block prompt-block">
@@ -585,7 +545,7 @@ function PromptEditor({ draft, onDraftField }: PromptEditorProps) {
         <label>
           <span>模型</span>
           <select aria-label="模型" name="model" value={draft.model} onChange={onDraftField}>
-            {Object.values(MODEL_CAPABILITIES).map((model) => (
+            {selectableModels.map((model) => (
               <option key={model.model} value={model.model}>
                 {model.displayName}
               </option>
@@ -596,8 +556,8 @@ function PromptEditor({ draft, onDraftField }: PromptEditorProps) {
           <span>时长</span>
           <select aria-label="时长" name="duration" value={draft.duration} onChange={onDraftField}>
             {defaultModel.supportedDurations.map((duration) => (
-              <option key={duration} value={`${duration}s`}>
-                {duration} 秒
+              <option key={duration} value={duration}>
+                {formatDurationLabel(duration)}
               </option>
             ))}
           </select>
@@ -721,17 +681,29 @@ function TaskItem({ accountName, task }: TaskItemProps) {
   );
 }
 
-function createAssetReference(file: File, index: number): AssetReference {
+async function createAssetReference(file: File, index: number): Promise<AssetReference> {
   const type = getAssetType(file);
+  const dataUrl = await readFileAsDataUrl(file);
 
   return {
     id: `asset-${Date.now()}-${index}`,
     type,
     label: '',
     localName: file.name,
-    previewUrl: URL.createObjectURL(file),
+    previewUrl: type === 'image' ? dataUrl : URL.createObjectURL(file),
+    dataUrl,
+    mimeType: file.type,
     uploadStatus: 'local'
   };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(String(reader.result)));
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('素材读取失败')));
+    reader.readAsDataURL(file);
+  });
 }
 
 function getAssetType(file: File): AssetReference['type'] {
@@ -763,6 +735,16 @@ function getAssetLabelPrefix(type: AssetReference['type'], index: number): strin
 function formatOrder(order: number): string {
   const numerals = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
   return numerals[order - 1] ?? String(order);
+}
+
+function formatDurationLabel(duration: string): string {
+  const normalized = duration.replace(/s$/u, ' 秒');
+
+  if (duration.startsWith('～')) {
+    return `约 ${normalized.slice(1)}`;
+  }
+
+  return normalized;
 }
 
 function getStatusText(status: WorkspaceState['tasks'][number]['status']): string {

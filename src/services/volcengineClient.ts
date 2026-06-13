@@ -4,15 +4,26 @@ import { createHash, createHmac } from 'node:crypto';
 
 export interface BuildSubmitPayloadInput {
   model: ModelId;
-  productName: string;
+  prompt: string;
+  duration: string;
+  resolution: string;
   assets: AssetReference[];
 }
 
-export interface PippitSubmitPayload {
-  req_key: 'pippit_iv2v_cvtob_master';
-  product_name: string;
-  product_img_url_list: string[];
-  model_img_url_list?: string[];
+export interface VisualSubmitPayload {
+  req_key: string;
+  prompt: string;
+  img_url_list?: string[];
+  video_url_list?: string[];
+  ratio?: string;
+  duration?: string;
+  language?: string;
+}
+
+export interface VisualQueryPayload {
+  req_key: string;
+  task_id: string;
+  req_json?: string;
 }
 
 export interface VisualCredentials {
@@ -55,14 +66,16 @@ export interface CreateVolcengineClientOptions {
 }
 
 export interface SubmitTaskInput {
-  credentials: VisualCredentials;
-  payload: PippitSubmitPayload;
+  credentials?: VisualCredentials;
+  payload: VisualSubmitPayload;
   task?: unknown;
 }
 
 export interface GetTaskResultInput {
-  credentials: VisualCredentials;
-  apiTaskId: string;
+  credentials?: VisualCredentials;
+  apiTaskId?: string;
+  reqKey?: string;
+  payload?: VisualQueryPayload;
 }
 
 export interface SubmitTaskResult {
@@ -86,33 +99,54 @@ export interface GetTaskResult {
   respData: unknown;
 }
 
-export function buildSubmitPayload(input: BuildSubmitPayloadInput): PippitSubmitPayload {
+export function buildSubmitPayload(input: BuildSubmitPayloadInput): VisualSubmitPayload {
   const capabilities = MODEL_CAPABILITIES[input.model];
 
   if (capabilities.submitMappingStatus !== 'known') {
     throw new Error('当前模型接口字段未配置，请补充接口文档后再提交');
   }
 
-  const publicImageUrls = input.assets
-    .filter((asset) => asset.type === 'image')
-    .map((asset) => asset.publicUrl?.trim() ?? '');
+  const uploadableAssets = input.assets.filter((asset) => asset.type === 'image' || asset.type === 'video');
+  const publicImageUrls = publicUrlsForType(uploadableAssets, 'image');
+  const publicVideoUrls = publicUrlsForType(uploadableAssets, 'video');
 
-  if (publicImageUrls.length === 0 || publicImageUrls.some((url) => !url)) {
+  if (uploadableAssets.some((asset) => !asset.publicUrl?.trim())) {
     throw new Error('请先配置素材上传方式，或粘贴公网图片链接。');
   }
 
-  const [productImageUrl, modelImageUrl] = publicImageUrls;
-  const payload: PippitSubmitPayload = {
+  const payload: VisualSubmitPayload = {
     req_key: capabilities.reqKey,
-    product_name: input.productName.trim() || '未命名商品',
-    product_img_url_list: [productImageUrl]
+    prompt: input.prompt.trim() || '生成一条视频',
+    ratio: input.resolution,
+    duration: input.duration,
+    language: 'Chinese'
   };
 
-  if (modelImageUrl) {
-    payload.model_img_url_list = [modelImageUrl];
+  if (publicImageUrls.length > 0) {
+    payload.img_url_list = publicImageUrls;
+  }
+
+  if (publicVideoUrls.length > 0) {
+    payload.video_url_list = publicVideoUrls;
   }
 
   return payload;
+}
+
+export function buildQueryPayload(input: {
+  model: ModelId;
+  apiTaskId: string;
+}): VisualQueryPayload {
+  const capabilities = MODEL_CAPABILITIES[input.model];
+
+  if (capabilities.submitMappingStatus !== 'known') {
+    throw new Error('当前模型接口字段未配置，请补充接口文档后再查询');
+  }
+
+  return {
+    req_key: capabilities.reqKey,
+    task_id: input.apiTaskId
+  };
 }
 
 export function buildSignedVisualRequest(input: SignedVisualRequestInput): SignedVisualRequest {
@@ -181,10 +215,11 @@ export function createVolcengineClient(options: CreateVolcengineClientOptions = 
 
   return {
     async submitTask(input: SubmitTaskInput): Promise<SubmitTaskResult> {
+      const credentials = requireCredentials(input.credentials);
       const request = buildSignedVisualRequest({
         action: 'CVSync2AsyncSubmitTask',
         version: '2022-08-31',
-        credentials: input.credentials,
+        credentials,
         body: input.payload,
         now: now()
       });
@@ -194,14 +229,21 @@ export function createVolcengineClient(options: CreateVolcengineClientOptions = 
       return normalizeSubmitTaskResponse(raw);
     },
     async getTaskResult(input: GetTaskResultInput): Promise<GetTaskResult> {
+      const credentials = requireCredentials(input.credentials);
+      const payload = input.payload ?? {
+        req_key: input.reqKey ?? MODEL_CAPABILITIES['seedance2.0fast'].reqKey,
+        task_id: input.apiTaskId ?? ''
+      };
+
+      if (!payload.task_id) {
+        throw new Error('缺少 task_id');
+      }
+
       const request = buildSignedVisualRequest({
         action: 'CVSync2AsyncGetResult',
         version: '2022-08-31',
-        credentials: input.credentials,
-        body: {
-          req_key: 'pippit_iv2v_cvtob_master',
-          task_id: input.apiTaskId
-        },
+        credentials,
+        body: payload,
         now: now()
       });
       const response = await fetcher(request.url, request.init);
@@ -210,6 +252,24 @@ export function createVolcengineClient(options: CreateVolcengineClientOptions = 
       return normalizeGetTaskResultResponse(raw);
     }
   };
+}
+
+function publicUrlsForType(
+  assets: AssetReference[],
+  type: 'image' | 'video'
+): string[] {
+  return assets
+    .filter((asset) => asset.type === type)
+    .map((asset) => asset.publicUrl?.trim() ?? '')
+    .filter(Boolean);
+}
+
+function requireCredentials(credentials: VisualCredentials | undefined): VisualCredentials {
+  if (!credentials) {
+    throw new Error('缺少火山引擎签名密钥');
+  }
+
+  return credentials;
 }
 
 function normalizeSubmitTaskResponse(raw: unknown): SubmitTaskResult {

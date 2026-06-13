@@ -12,8 +12,8 @@ describe('workspace persistence', () => {
     const storage = createMemoryStorage();
     const state = updateDraft(createInitialState(), {
       prompt: '一支干净利落的产品视频',
-      duration: '10s',
-      resolution: '1080p'
+      duration: '～30s',
+      resolution: '9:16'
     });
 
     saveWorkspaceState(storage, state);
@@ -24,8 +24,8 @@ describe('workspace persistence', () => {
     expect(loadWorkspaceState(storage)).toMatchObject({
       draft: {
         prompt: '一支干净利落的产品视频',
-        duration: '10s',
-        resolution: '1080p'
+        duration: '～30s',
+        resolution: '9:16'
       }
     });
   });
@@ -51,6 +51,23 @@ describe('workspace persistence', () => {
       draft: {
         prompt: '旧缓存里的提示词'
       }
+    });
+  });
+
+  it('normalizes stale draft options after the seedance migration', () => {
+    const storage = createMemoryStorage();
+    const staleState = updateDraft(createInitialState(), {
+      model: 'pippit_iv2v_cvtob_master',
+      duration: '5s',
+      resolution: '1:1'
+    });
+
+    storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(staleState));
+
+    expect(loadWorkspaceState(storage).draft).toMatchObject({
+      model: 'seedance2.0fast',
+      duration: '～15s',
+      resolution: '16:9'
     });
   });
 });

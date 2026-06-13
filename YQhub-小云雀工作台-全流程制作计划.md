@@ -1,144 +1,155 @@
 # YQhub 小云雀工作台全流程制作计划
 
-## 1. 重构后的目标
+## 1. 项目定位
 
-做一个本地运行的小云雀工作台，用于接入“小云雀”相关视频生成 API。每个用户在自己的电脑上配置自己的 API 账号和素材上传方式，任务、草稿、生成历史都保存在本地，不做云端网站、不做统一账号系统、不做真名注册和口令登录。
+YQhub 是本地运行的小云雀视频生成工作台，目标模型是 `seedance2.0fast`。普通用户只在桌面端填写小云雀官网发放的 `ak-...` API Key，不填写 Secret Key，不处理公网 URL，不使用云端统一账号系统。
 
-第一版目标是完成一个可演示、可接真实接口的本地端界面效果图和基础工程结构；后续按接口字段补齐真实提交、轮询、下载和错误处理。
+第一版采用“本地桌面端 + Relay 服务”的结构：
+
+- 桌面端负责素材选择、标注、提示词、队列、进度和历史。
+- Relay 负责校验 API Key、临时托管本地素材、生成公网 URL、签名调用火山引擎视觉异步任务 API。
 
 ## 2. 范围调整
 
-### 保留
+保留：
 
-- 拖拽、复制粘贴上传图片，后续预留视频和音频参考素材。
-- 每个参考素材可填写一句标注，例如“图一是萧衍”“视频一是开场参考”“音频一是旁白参考”。
-- 提示词编辑。
-- 生成视频按钮。
-- 视频时长、画面比例选择。
-- 生成队列、任务状态、进度条、预计剩余时间。
-- 本地草稿缓存、刷新后恢复、一键清空当前编辑内容。
-- 生成历史本地保存，生成完成后自动下载视频，避免结果链接过期。
-- 多账号 API 配置，每个任务绑定一个 API 账号，避免不同用户或不同账号任务混在一起。
+- 拖拽、点击选择、粘贴上传图片、视频、音频素材。
+- 图片和视频可作为 Seedance 参考素材；音频第一版只作为标注文案进入提示词。
+- 素材标注，例如“图一是萧衍”“视频一是动作参考”。
+- 提示词编辑、自动缓存、清空草稿。
+- `seedance2.0fast` 模型、时长、画幅比例选择。
+- 生成按钮、队列、进度条、预计时间、生成历史。
+- 完成后立即下载视频到本地，避免远程 `video_url` 过期。
+- 多 API Key 本地管理，任务按账号绑定，单人多账号互不串用。
 
-### 移除
+移除：
 
 - 云端上线网站。
-- 统一用户系统。
-- 真名注册登记。
-- 固定口令 `yaoyaoba118`。
-- 云端数据库、云端队列、云端历史记录。
+- 统一用户系统、真名登记、固定口令。
+- 让普通用户填写 Secret Key。
+- 让普通用户填写素材公网 URL。
 
-## 3. 接口依据与约束
+## 3. 接口依据
 
-接口文档当前明确的是火山引擎视觉异步任务模式：
+目标接口为火山引擎视觉异步任务模式：
 
 - 接口地址：`https://visual.volcengineapi.com`
 - 提交任务：`Action=CVSync2AsyncSubmitTask&Version=2022-08-31`
 - 查询任务：`Action=CVSync2AsyncGetResult&Version=2022-08-31`
 - 固定鉴权参数：`Region=cn-north-1`，`Service=cv`
-- 已知 `req_key`：`pippit_iv2v_cvtob_master`
-- 已知提交字段：`product_name`、`product_img_url_list`、`model_img_url_list`
-- `product_img_url_list` 必填，当前文档限制为 1 张 jpg/png，建议小于 2048 x 2048
-- `model_img_url_list` 可选，当前文档限制为 1 张 jpg/png，建议小于 2048 x 2048
-- 提交成功返回 `task_id`
-- 查询成功返回 `status`、`video_url`、`resp_data`
-- `video_url` 有效期为 1 小时，需要本地端完成后立即下载保存
-- 任务状态包括 `processing`、`in_queue`、`generating`、`done`、`not_found`、`expired`
-- 素材 URL 必须公网可访问，不能只传本地文件路径
-- 查询接口支持可选 `req_json`，可用于传入 AIGC 隐式标识配置
 
-需要注意：当前接口文档没有明确给出 `seedance2.0fast` 的专用参数，也没有明确提示词、视频时长、画面比例字段。计划中会把这些做成模型能力配置；如果后续补到接口字段，就直接映射提交。如果接口不支持，界面仍可展示，但提交层不伪造字段。
+`seedance2.0fast` 对应“小云雀-智能生视频 Agent 2.0 有参考”文档：
 
-## 4. 推荐技术形态
+- `req_key`：`pippit_iv2v_v20_cvtob_with_vinput`
+- `prompt`：必填，最终提示词。
+- `img_url_list`：可选，参考图片公网 URL，图片和视频总数不超过 50。
+- `video_url_list`：可选，参考视频公网 URL。
+- `ratio`：可选，`16:9`、`9:16`、`4:3`、`3:4`。
+- `duration`：可选，`～15s`、`～30s`、`40～60s`。
+- `language`：默认 `Chinese`。
 
-采用“本地桌面端 + 本地存储 + 本地 API 签名”的结构。
+查询接口使用同一个 `req_key` 和 `task_id`。查询成功后读取：
 
-- 前端：Vite + React，负责界面、草稿、任务列表和历史展示。
-- 本地运行壳：Electron 或 Tauri，负责访问文件系统、下载视频、保存密钥。
-- 本地存储：SQLite 或 IndexedDB，保存草稿、任务、历史、素材元数据。
-- 密钥存储：系统 Keychain 或 Electron safeStorage，不把 AK/SK 明文放进 localStorage。
-- API 调用：放在本地主进程或本地服务中完成签名，前端不直接暴露密钥。
+- `status`
+- `video_url`
+- `resp_data`
+- `request_id`
 
-如果只做界面效果图，先用 Mock API 模拟提交、排队、生成中、完成、失败；接口适配层保留真实 API 结构。
+状态包括 `processing`、`in_queue`、`generating`、`done`、`not_found`、`expired`。
+
+## 4. 总体架构
+
+```text
+YQhub Desktop
+  ├─ React UI
+  ├─ Electron Main
+  ├─ 本地草稿/任务/历史
+  └─ 用户 API Key 安全保存
+        │
+        ▼
+YQhub Relay
+  ├─ 校验 x-yqhub-api-key
+  ├─ 保存素材到临时目录
+  ├─ 以公网 URL 暴露图片/视频
+  ├─ 生成 Seedance 请求体
+  └─ 用服务端 VOLCENGINE_* 密钥签名调用官方接口
+```
+
+普通用户只接触桌面端。Relay 部署者配置：
+
+- `YQHUB_ALLOWED_KEYS`
+- `YQHUB_PUBLIC_BASE_URL`
+- `YQHUB_ASSET_DIR`
+- `VOLCENGINE_ACCESS_KEY_ID`
+- `VOLCENGINE_SECRET_ACCESS_KEY`
+- `VOLCENGINE_ENDPOINT`
+- `VOLCENGINE_REGION`
+- `VOLCENGINE_SERVICE`
 
 ## 5. 页面布局
 
-主界面采用单屏工作台，减少跳转。
-
-顶部为账号和模型栏：
-
-- 左侧显示当前 API 账号。
-- 中间选择模型、时长、画面比例。
-- 右侧提供账号管理、历史入口、设置入口。
-
-主体为左右两栏：
-
-- 左栏是创作区：素材上传、素材标注、提示词编辑、生成按钮。
-- 右栏是任务区：当前队列、进度、预计剩余时间、生成结果和历史。
-
-底部为本地状态栏：
-
-- 显示草稿已保存、当前账号并发状态、最近一次接口错误。
-- 不展示实现说明，不放细碎灰色解释文案。
-
-## 6. 组件树
+主界面是单屏工作台，不做营销页。
 
 ```text
-App
-├─ AppShell
-│  ├─ TopBar
-│  │  ├─ AccountSwitcher
-│  │  ├─ ModelSelector
-│  │  ├─ DurationSelect
-│  │  ├─ ResolutionSelect
-│  │  └─ SettingsButton
-│  ├─ Workspace
-│  │  ├─ ComposePanel
-│  │  │  ├─ AssetDropzone
-│  │  │  ├─ AssetGrid
-│  │  │  │  └─ AssetCard
-│  │  │  │     ├─ AssetPreview
-│  │  │  │     └─ AssetLabelInput
-│  │  │  ├─ PromptEditor
-│  │  │  └─ GenerateBar
-│  │  └─ TaskPanel
-│  │     ├─ QueueList
-│  │     │  └─ QueueItem
-│  │     ├─ ProgressView
-│  │     └─ HistoryList
-│  │        └─ HistoryItem
-│  ├─ AccountDialog
-│  │  ├─ AccountForm
-│  │  └─ AccountHealthCheck
-│  └─ SettingsDialog
-│     ├─ StorageSettings
-│     ├─ UploadProviderSettings
-│     └─ CacheActions
+AppShell
+├─ TopBar
+│  ├─ 当前账号
+│  ├─ 账号数量
+│  └─ 保存状态
+├─ ComposePanel
+│  ├─ AccountPanel
+│  │  ├─ 当前账号选择
+│  │  ├─ 账号名
+│  │  └─ API Key
+│  ├─ AssetDropzone
+│  ├─ AssetGrid
+│  │  └─ AssetCard
+│  │     ├─ 预览
+│  │     └─ 标注
+│  ├─ PromptEditor
+│  │  ├─ 提示词
+│  │  ├─ 模型
+│  │  ├─ 时长
+│  │  └─ 画幅比例
+│  └─ GenerateBar
+│     ├─ 清空
+│     └─ 生成
+└─ TaskPanel
+   ├─ QueueList
+   └─ HistoryList
 ```
 
-## 7. 核心数据结构
+界面文案保持短、直接、中文自然，不展示实现说明。
+
+## 6. 核心数据结构
 
 ### API 账号
 
-- `id`：本地唯一 ID
-- `name`：账号名称
-- `accessKeyId`：密钥 ID
-- `secretAccessKeyRef`：系统密钥引用
-- `endpoint`：默认 `https://visual.volcengineapi.com`
-- `region`：默认 `cn-north-1`
-- `service`：默认 `cv`
-- `enabled`：是否启用
-- `rateLimit`：本地限流配置
+- `id`
+- `name`
+- `apiKeyPreview`
+- `apiKeyRef`
+- `relayEndpoint`
+- `concurrencyLimit`
+- `enabled`
+- `createdAt`
+- `updatedAt`
+
+桌面端不把原始 API Key 写入 renderer storage。Electron 主进程用本地 vault 保存原始 API Key。
 
 ### 参考素材
 
 - `id`
 - `type`：`image`、`video`、`audio`
-- `localPath`
-- `publicUrl`
 - `label`
-- `order`
+- `localName`
+- `previewUrl`
+- `dataUrl`
+- `mimeType`
+- `publicUrl`
 - `uploadStatus`
+
+桌面端提交给 Relay 时带 `dataUrl`，Relay 上传后补 `publicUrl`。
 
 ### 生成任务
 
@@ -146,9 +157,10 @@ App
 - `accountId`
 - `model`
 - `prompt`
+- `finalPrompt`
 - `assets`
 - `duration`
-- `resolution`：`16:9`、`9:16`、`1:1`
+- `resolution`
 - `apiTaskId`
 - `status`
 - `progress`
@@ -161,220 +173,134 @@ App
 - `createdAt`
 - `updatedAt`
 
-## 8. 本地多账号不冲突设计
+## 7. 任务流程
 
-每个 API 账号独立保存配置和任务记录。提交任务时，任务会固定绑定 `accountId`，后续轮询、重试、下载都使用同一个账号的签名信息。
-
-本地队列按账号分组调度：
-
-- 同一账号按该账号的并发限制排队。
-- 不同账号互不共用任务状态。
-- 切换账号只切换默认提交账号，不隐藏历史。
-- 历史列表可按账号筛选。
-- 删除账号时不删除历史，只移除密钥和继续轮询能力。
-
-这样每个用户在自己的本地端使用自己的 API 账号，不需要云端隔离，也不会把多个用户的任务混在一起。
-
-## 9. 素材上传流程
-
-由于接口要求图片 URL 公网可访问，本地拖拽文件需要先变成可访问 URL。
-
-第一版支持两种方式：
-
-1. 用户直接粘贴公网素材 URL。
-2. 用户配置自己的对象存储，将本地文件上传为临时公网 URL。
-
-推荐上传流程：
+### 生成
 
 ```text
-拖拽/粘贴素材
-→ 本地生成预览
-→ 用户填写标注
-→ 上传到用户配置的对象存储
-→ 得到 publicUrl
-→ 提交小云雀任务
+用户添加 API Key
+→ 上传图片/视频/音频
+→ 填写素材标注
+→ 填写提示词
+→ 生成 finalPrompt
+→ 桌面端提交 task 到 Relay
+→ Relay 校验 API Key
+→ Relay 保存图片/视频并生成公网 URL
+→ Relay 构造 Seedance 请求体
+→ Relay 签名调用官方提交接口
+→ 返回 task_id
+→ 桌面端进入队列
 ```
 
-如果用户没有配置对象存储，则生成按钮提示先补充素材上传配置，不把本地路径直接提交给 API。
+Seedance 提交体：
 
-## 10. API 调用流程
+```json
+{
+  "req_key": "pippit_iv2v_v20_cvtob_with_vinput",
+  "prompt": "提示词和素材标注",
+  "img_url_list": ["https://relay.example.com/assets/xxx.png"],
+  "video_url_list": ["https://relay.example.com/assets/xxx.mp4"],
+  "ratio": "16:9",
+  "duration": "～15s",
+  "language": "Chinese"
+}
+```
 
-### 提交
+### 查询
 
 ```text
-校验账号
-→ 校验素材 publicUrl
-→ 根据模型能力映射请求体
-→ 签名请求
-→ POST 提交任务
-→ 保存 task_id
-→ 进入本地队列
+按 apiTaskId 轮询
+→ Relay 用 model 还原 req_key
+→ 调用官方查询接口
+→ 返回 status / video_url / resp_data / request_id
+→ 桌面端更新进度
+→ done 且有 video_url 时立即下载
 ```
 
-已知营销成片 Agent 请求体包括：
+### 本地保存
 
-- `req_key`
-- `product_name`
-- `product_img_url_list`
-- `model_img_url_list`
-
-如果使用 `seedance2.0fast`，需要补充该模型真实字段后再映射：
-
-- 提示词字段
-- 参考图/视频/音频字段
-- 时长字段
-- 画面比例字段
-- 模型标识字段
-
-### 轮询
-
-```text
-按 task_id 查询
-→ code != 10000 时记录错误
-→ code = 10000 时读取 data.status
-→ in_queue / processing / generating 时更新进度
-→ done 时读取 video_url
-→ 自动下载到本地历史目录
-```
-
-### 下载保存
-
-生成完成后立即下载视频到本地目录，例如：
+默认保存到：
 
 ```text
 ~/Movies/YQhub/exports/YYYY-MM-DD/task-id.mp4
 ```
 
-历史记录保存本地文件路径、原始 `video_url`、接口 `request_id` 和参数摘要。即使 1 小时后 `video_url` 失效，用户仍可打开本地视频。
+历史优先打开本地文件，远程 `video_url` 只作为备用记录。
 
-## 11. 进度与预计时间
+## 8. 多账号不冲突
 
-接口只返回任务状态，不返回精确百分比。前端进度采用状态映射和本地估算：
+每个任务固定绑定 `accountId`：
 
-- `in_queue`：10% 到 25%，显示排队中。
-- `processing`：25% 到 45%，显示处理中。
-- `generating`：45% 到 90%，显示生成中。
-- `done`：100%，显示已完成。
+- 提交、查询、下载都使用同一个账号的 API Key。
+- 切换账号只影响下一次生成，不改已有任务。
+- 历史按任务保存，不随账号删除而清空。
+- 同一桌面端可以添加多个 API Key，互不共用任务状态。
 
-预计剩余时间根据本地历史平均耗时估算，按账号、模型、画面比例、时长分组记录。没有历史数据时显示“估算中”，不编造具体秒数。
+Relay 使用 `YQHUB_ALLOWED_KEYS` 校验用户 API Key。不同用户如果使用不同本地端和不同 API Key，不会共享桌面端本地状态。
 
-## 12. 缓存与清除
+## 9. 进度与预计时间
 
-本地缓存分三类：
+官方接口只返回状态，不返回精确百分比。前端使用状态估算：
 
-- 草稿：素材、标注、提示词、时长、画面比例、当前账号。
-- 任务：队列、状态、错误、接口任务 ID。
-- 历史：已下载视频、本地路径、参数摘要。
+- `in_queue`：排队中，约 18%。
+- `processing`：处理中，约 35%。
+- `generating`：生成中，约 72%。
+- `done`：已完成，100%。
+- `not_found` / `expired`：不可继续。
 
-操作设计：
+没有足够历史数据时预计时间显示“估算中”，不编造精确秒数。
 
-- “清空”：清空当前草稿和未上传素材。
-- “清除缓存”：清除草稿和临时上传记录。
-- “删除历史”：单独入口，需确认，不和清空草稿混在一起。
+## 10. 错误处理
 
-## 13. 错误处理
+用户侧提示保持短句：
 
-错误信息面向用户简短直接：
+- API Key 不可用。
+- 素材数据格式不正确。
+- 仅支持 jpg、png、mp4、mov、webm 参考素材。
+- 提示词没有通过审核，请修改后重试。
+- 生成失败，可以重试一次。
+- 任务已过期，请重新生成。
 
-- 素材审核未通过：提示“这张素材没有通过审核，请换一张。”
-- 文本审核未通过：提示“提示词没有通过审核，请修改后重试。”
-- QPS 或并发超限：提示“当前账号请求过多，已自动排队。”
-- 内部错误：提示“生成失败，可以重试一次。”
-- 任务过期：提示“任务已过期，请重新生成。”
+技术信息保存在任务记录中：
 
-技术细节保存到任务记录：
+- `errorCode`
+- `errorMessage`
+- `requestId`
+- `respData`
 
-- `code`
-- `message`
-- `request_id`
-- `time_elapsed`
-- 原始请求摘要
+## 11. 打包与交付
 
-## 14. 制作阶段
+桌面端：
 
-### 阶段一：需求和效果图
+- macOS：DMG。
+- Windows：NSIS 安装包。
+- GitHub Actions 自动构建。
 
-- 明确本地端定位。
-- 完成单屏工作台线框。
-- 完成视觉稿或可交互前端 Mock。
-- 用 Mock 数据展示上传、标注、提交、排队、进度、完成、历史。
+Relay：
 
-验收标准：
+- `npm run relay:build` 输出 `dist-relay/relayServer.js`。
+- `npm run relay:start` 启动服务。
+- 部署环境必须有公网 HTTPS 域名，否则官方接口无法读取参考素材。
 
-- 用户能看懂完整生成流程。
-- 页面中没有实现说明。
-- 中文文案自然简洁。
-- 按钮文案控制在 2 到 4 个字。
+## 12. 当前仍差的真实可用条件
 
-### 阶段二：本地工程
+代码层可以做完桌面端和 Relay，但真正让小白直接使用还差：
 
-- 搭建 Vite + React。
-- 接入 Electron 或 Tauri。
-- 建立本地存储。
-- 建立账号配置和密钥安全存储。
-- 建立 API Adapter 接口，不直接在页面组件中写请求逻辑。
+1. 部署一个公网 HTTPS Relay。
+2. 在 Relay 环境变量里配置允许使用的用户 API Key。
+3. 在 Relay 环境变量里配置服务端火山引擎签名密钥。
+4. 确认用户 API Key 在小云雀官网侧已开通对应模型权限。
+5. 用真实素材和真实 API Key 做一次端到端提交、查询、下载验证。
 
-验收标准：
+不应该把真实 API Key 或签名密钥提交到 GitHub。
 
-- 刷新或重启后草稿恢复。
-- 多账号配置可新增、切换、删除。
-- 任务记录绑定账号。
+## 13. 自检
 
-### 阶段三：接口接入
-
-- 实现火山引擎签名。
-- 实现提交任务。
-- 实现轮询查询。
-- 实现状态映射和错误码处理。
-- 实现完成后自动下载视频。
-
-验收标准：
-
-- 能用真实 API 账号提交任务。
-- 能看到任务状态变化。
-- 生成完成后本地历史里能打开视频。
-- `request_id` 可在错误详情中查看。
-
-### 阶段四：本地打包
-
-- 配置 macOS 本地打包。
-- 配置默认历史保存目录。
-- 配置本地数据迁移策略。
-- 输出可安装本地应用。
-
-验收标准：
-
-- 不依赖云端网站。
-- 换一台电脑安装后，可用自己的 API 账号独立使用。
-- 不同用户本地数据互不影响。
-
-## 15. 第一版界面文案建议
-
-- 主按钮：`生成`
-- 草稿清理：`清空`
-- 历史入口：`历史`
-- 账号入口：`账号`
-- 上传区：`拖入素材，或粘贴图片`
-- 标注占位：`图一是...`
-- 提示词占位：`写下你想生成的视频内容`
-- 空队列：`生成后会显示进度`
-- 空历史：`生成完成后会保存在这里`
-
-## 16. 待确认事项
-
-在进入真实接口开发前，需要补齐或确认：
-
-1. `seedance2.0fast` 的真实接口文档和 `req_key`。
-2. 提示词、时长、画面比例在该模型中的字段名和可选值。
-3. 参考视频、参考音频是否被接口支持。
-4. 本地素材转公网 URL 使用哪种对象存储。
-5. 是否需要支持 Windows，还是先只做 macOS。
-
-## 17. 自检
-
-- 未保留云端上线网站、真名注册、统一口令登录。
-- 已保留上传、标注、提示词、生成、参数选择、队列、进度、历史、本地缓存。
-- 已按接口文档处理 `task_id`、`status`、`video_url`、错误码和 1 小时链接有效期。
-- 已说明本地文件不能直接提交，必须转为公网 URL。
-- 已给出页面布局和组件树。
-- 界面文案没有实现说明、营销口吻、翻译腔和细碎灰色解释。
+- 桌面端只让用户填写 API Key。
+- 不要求普通用户填写公网 URL。
+- 不再把营销成片 Agent 当作目标模型。
+- `seedance2.0fast` 使用官方智能生视频 Agent 2.0 有参考字段。
+- 图片和视频通过 Relay 转公网 URL。
+- 素材标注会合并进 `finalPrompt`。
+- 保留本地缓存、队列、进度、历史和下载。
+- UI 不展示实现说明。

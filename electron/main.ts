@@ -11,7 +11,7 @@ import {
 import { createDownloadService } from '../src/main/services/downloadService';
 import { createQueueService } from '../src/main/services/queueService';
 import { createTaskService } from '../src/main/services/taskService';
-import { createVolcengineClient } from '../src/services/volcengineClient';
+import { createRelayClient } from '../src/services/relayClient';
 
 interface MainStoreSchema {
   accounts: ApiAccount[];
@@ -30,15 +30,15 @@ const accountService = createAccountService({
   vault: createElectronSecretVault(store),
   initialAccounts: store.get('accounts') ?? []
 });
-const visualClient = createVolcengineClient();
+const relayClient = createRelayClient();
 const downloadService = createDownloadService();
 const queueService = createQueueService({
   accountService,
-  client: visualClient
+  client: relayClient
 });
 const taskService = createTaskService({
   accountService,
-  client: visualClient,
+  client: relayClient,
   downloadService
 });
 

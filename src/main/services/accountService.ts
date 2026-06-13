@@ -1,12 +1,10 @@
 import type { ApiAccount, ApiAccountInput } from '../../domain/types';
+import { maskApiKey } from '../../domain/state';
 
 export interface ApiCredentials {
   accountId: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  endpoint: string;
-  region: string;
-  service: string;
+  apiKey: string;
+  relayEndpoint: string;
 }
 
 export interface SecretVault {
@@ -28,9 +26,7 @@ export interface CreateAccountServiceOptions {
   initialAccounts?: ApiAccount[];
 }
 
-const DEFAULT_ENDPOINT = 'https://visual.volcengineapi.com';
-const DEFAULT_REGION = 'cn-north-1';
-const DEFAULT_SERVICE = 'cv';
+const DEFAULT_RELAY_ENDPOINT = process.env.YQHUB_RELAY_URL ?? 'https://relay.yqhub.local';
 const FIXED_TIME = '2026-06-13T00:00:00.000Z';
 let vaultSequence = 0;
 
@@ -45,11 +41,9 @@ export function createAccountService({
       const account: ApiAccount = {
         id: `account-${accounts.length + 1}`,
         name: input.name.trim() || '未命名账号',
-        accessKeyId: input.accessKeyId.trim(),
-        secretAccessKeyRef: vault.writeSecret(input.secretAccessKey),
-        endpoint: input.endpoint ?? DEFAULT_ENDPOINT,
-        region: input.region ?? DEFAULT_REGION,
-        service: input.service ?? DEFAULT_SERVICE,
+        apiKeyPreview: maskApiKey(input.apiKey),
+        apiKeyRef: vault.writeSecret(input.apiKey.trim()),
+        relayEndpoint: input.relayEndpoint ?? DEFAULT_RELAY_ENDPOINT,
         concurrencyLimit: input.concurrencyLimit ?? 1,
         enabled: true,
         createdAt: FIXED_TIME,
@@ -76,17 +70,14 @@ export function createAccountService({
 
       return {
         accountId: account.id,
-        accessKeyId: account.accessKeyId,
-        secretAccessKey: vault.readSecret(account.secretAccessKeyRef),
-        endpoint: account.endpoint,
-        region: account.region,
-        service: account.service
+        apiKey: vault.readSecret(account.apiKeyRef),
+        relayEndpoint: account.relayEndpoint
       };
     },
     deleteAccount(accountId) {
       const account = this.getAccount(accountId);
       accounts = accounts.filter((candidate) => candidate.id !== accountId);
-      vault.deleteSecret(account.secretAccessKeyRef);
+      vault.deleteSecret(account.apiKeyRef);
     }
   };
 }
