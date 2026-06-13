@@ -57,8 +57,7 @@
     "mac": {
       "category": "public.app-category.video",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "identity": null
     },
@@ -69,12 +68,6 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "x64"
           ]
