@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  define: {
+    __YQHUB_DEFAULT_RELAY_ENDPOINT__: JSON.stringify(process.env.YQHUB_RELAY_URL ?? '')
+  },
   build: {
     outDir: 'dist-electron/electron',
     emptyOutDir: true,

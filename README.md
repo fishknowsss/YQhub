@@ -22,6 +22,16 @@ Seedance 官方接口仍要求公网可访问的参考图片/视频 URL，并且
 
 因此，真正给小白一键使用前，还需要部署一个公网 Relay，并把允许使用的 API Key 配到 Relay 环境变量里。不要把真实 API Key 写进源码或提交记录。
 
+## 真正可用的部署顺序
+
+1. 部署 Relay 到一个支持长期运行 Node 服务的平台，例如 VPS、Railway、Render、Fly.io 或同类 Docker 服务。
+2. 给 Relay 配 HTTPS 域名，例如 `https://relay.example.com`。
+3. 在 Relay 环境变量里配置 `YQHUB_ALLOWED_KEYS`、`YQHUB_PUBLIC_BASE_URL` 和 `VOLCENGINE_*`。
+4. 确认 `https://relay.example.com/health` 返回 `{"ok":true}`。
+5. 在 GitHub 仓库变量里设置 `YQHUB_RELAY_URL=https://relay.example.com`。
+6. 重新运行 GitHub Actions 的 `Build Installers`，下载新的 macOS/Windows 安装包。
+7. 普通用户安装后只填写允许列表里的 `ak-...` API Key。
+
 ## Relay 环境变量
 
 ```bash
@@ -39,6 +49,16 @@ PORT="8787"
 
 `YQHUB_ALLOWED_KEYS` 是普通用户在桌面端填写的 API Key 允许列表。`VOLCENGINE_*` 只放在 Relay 服务端。
 
+## Docker 启动 Relay
+
+在服务器上创建 `.env`，内容参考 `.env.example`，然后运行：
+
+```bash
+docker compose -f docker-compose.relay.yml up -d --build
+```
+
+如果使用反向代理或平台自带 HTTPS，`YQHUB_PUBLIC_BASE_URL` 必须填写外部可访问的 HTTPS 地址。`/assets/...` 会公开访问，因为官方视频接口需要直接拉取参考图片和视频。
+
 ## 开发运行
 
 ```bash
@@ -54,6 +74,7 @@ npm run relay:start
 ```
 
 桌面端默认连接 `YQHUB_RELAY_URL` 指定的 Relay；没有设置时会使用占位地址 `https://relay.yqhub.local`。
+GitHub Actions 也会读取仓库变量 `YQHUB_RELAY_URL`，并把它写入安装包。
 
 ## 验证
 

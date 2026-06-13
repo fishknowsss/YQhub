@@ -1,0 +1,18 @@
+services:
+  yqhub-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.relay
+    env_file:
+      - .env
+    environment:
+      YQHUB_ASSET_DIR: /data/assets
+      PORT: 8787
+    ports:
+      - "8787:8787"
+    volumes:
+      - yqhub-assets:/data/assets
+    restart: unless-stopped
+
+volumes:
+  yqhub-assets:

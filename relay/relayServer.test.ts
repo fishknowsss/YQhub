@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,65 @@ afterEach(async () => {
 });
 
 describe('relay server', () => {
+  it('allows health checks without a user API key', async () => {
+    const handler = createRelayHandler({
+      allowedKeys: ['ak-allowed'],
+      assetDir: await createTempDir(),
+      publicBaseUrl: 'https://relay.example.com',
+      visualClient: createVisualClient()
+    });
+
+    const response = await handler(new Request('http://relay.local/health'));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it('serves public assets without a user API key so the visual API can fetch references', async () => {
+    const assetDir = await createTempDir();
+    const visualClient = createVisualClient();
+    const handler = createRelayHandler({
+      allowedKeys: ['ak-user'],
+      assetDir,
+      publicBaseUrl: 'https://relay.example.com',
+      visualClient
+    });
+
+    const submitResponse = await handler(
+      new Request('http://relay.local/v1/tasks', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-yqhub-api-key': 'ak-user'
+        },
+        body: JSON.stringify({
+          prompt: '生成一条茶饮短片',
+          model: 'seedance2.0fast',
+          duration: '～15s',
+          resolution: '16:9',
+          assets: [
+            {
+              id: 'asset-1',
+              type: 'image',
+              label: '图一是产品',
+              localName: 'product.png',
+              dataUrl: 'data:image/png;base64,ZmFrZQ==',
+              mimeType: 'image/png'
+            }
+          ]
+        })
+      })
+    );
+    expect(submitResponse.status).toBe(200);
+    const [filename] = await readdir(assetDir);
+
+    const assetResponse = await handler(new Request(`http://relay.local/assets/${filename}`));
+
+    expect(assetResponse.status).toBe(200);
+    expect(assetResponse.headers.get('content-type')).toBe('image/png');
+    await expect(assetResponse.text()).resolves.toBe('fake');
+  });
+
   it('rejects requests when the user API key is not allowed', async () => {
     const handler = createRelayHandler({
       allowedKeys: ['ak-allowed'],

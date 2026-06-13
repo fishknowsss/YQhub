@@ -27,6 +27,8 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          YQHUB_RELAY_URL: ${{ vars.YQHUB_RELAY_URL }}
         run: npm run dist:mac
 
       - name: Upload macOS installers
@@ -52,6 +54,8 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          YQHUB_RELAY_URL: ${{ vars.YQHUB_RELAY_URL }}
         run: npm run dist:win
 
       - name: Upload Windows installers

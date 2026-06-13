@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+dist
+dist-electron
+dist-relay
+release
+.yqhub-assets
+.env
+*.log

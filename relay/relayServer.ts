@@ -62,15 +62,11 @@ export function createRelayHandler(options: CreateRelayHandlerOptions) {
     try {
       const url = new URL(request.url);
 
-      if (!isAllowed(request, allowedKeys)) {
-        return jsonResponse({ error: 'unauthorized', message: 'API Key 不可用' }, 401);
-      }
-
-      if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
-        return serveAsset(options.assetDir, url.pathname);
-      }
-
       if (request.method === 'POST' && url.pathname === '/v1/tasks') {
+        if (!isAllowed(request, allowedKeys)) {
+          return jsonResponse({ error: 'unauthorized', message: 'API Key 不可用' }, 401);
+        }
+
         const body = (await request.json()) as RelayTaskRequest;
         const publicAssets = await uploadAssets(body.assets ?? [], options);
         const model = parseModelId(body.model);
@@ -94,6 +90,10 @@ export function createRelayHandler(options: CreateRelayHandlerOptions) {
       }
 
       if (request.method === 'GET' && url.pathname.startsWith('/v1/tasks/')) {
+        if (!isAllowed(request, allowedKeys)) {
+          return jsonResponse({ error: 'unauthorized', message: 'API Key 不可用' }, 401);
+        }
+
         const apiTaskId = decodeURIComponent(url.pathname.replace('/v1/tasks/', ''));
         const model = parseModelId(url.searchParams.get('model') ?? undefined);
         const result = await options.visualClient.getTaskResult({
@@ -110,6 +110,10 @@ export function createRelayHandler(options: CreateRelayHandlerOptions) {
           video_url: result.videoUrl,
           resp_data: result.respData
         });
+      }
+
+      if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
+        return serveAsset(options.assetDir, url.pathname);
       }
 
       if (request.method === 'GET' && url.pathname === '/health') {
