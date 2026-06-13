@@ -1,0 +1,144 @@
+import type {
+  ApiAccount,
+  ApiAccountInput,
+  AssetReference,
+  DraftState,
+  GenerationTask,
+  WorkspaceState
+} from './types';
+
+const DEFAULT_ENDPOINT = 'https://visual.volcengineapi.com';
+const DEFAULT_REGION = 'cn-north-1';
+const DEFAULT_SERVICE = 'cv';
+const DEFAULT_MODEL = 'seedance2.0fast';
+
+export function createInitialDraft(): DraftState {
+  return {
+    prompt: '',
+    assets: [],
+    duration: '5s',
+    resolution: '16:9',
+    model: DEFAULT_MODEL
+  };
+}
+
+export function createInitialState(): WorkspaceState {
+  return {
+    version: 1,
+    accounts: [],
+    currentAccountId: null,
+    draft: createInitialDraft(),
+    tasks: []
+  };
+}
+
+export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): WorkspaceState {
+  const account: ApiAccount = {
+    id: `account-${state.accounts.length + 1}`,
+    name: input.name.trim() || '未命名账号',
+    accessKeyId: input.accessKeyId.trim(),
+    secretAccessKeyRef: createSecretReference(input),
+    endpoint: DEFAULT_ENDPOINT,
+    region: DEFAULT_REGION,
+    service: DEFAULT_SERVICE,
+    enabled: true,
+    createdAt: new Date(0).toISOString()
+  };
+
+  return {
+    ...state,
+    accounts: [...state.accounts, account],
+    currentAccountId: state.currentAccountId ?? account.id
+  };
+}
+
+export function selectAccount(state: WorkspaceState, accountId: string): WorkspaceState {
+  if (!state.accounts.some((account) => account.id === accountId)) {
+    throw new Error('账号不存在');
+  }
+
+  return {
+    ...state,
+    currentAccountId: accountId
+  };
+}
+
+export function updateDraft(
+  state: WorkspaceState,
+  patch: Partial<DraftState>
+): WorkspaceState {
+  return {
+    ...state,
+    draft: {
+      ...state.draft,
+      ...patch
+    }
+  };
+}
+
+export function clearDraft(state: WorkspaceState): WorkspaceState {
+  return {
+    ...state,
+    draft: createInitialDraft()
+  };
+}
+
+export function createGenerationTask(state: WorkspaceState): WorkspaceState {
+  if (!state.currentAccountId) {
+    throw new Error('请先添加 API 账号');
+  }
+
+  const now = new Date(0).toISOString();
+  const task: GenerationTask = {
+    id: `local-task-${state.tasks.length + 1}`,
+    accountId: state.currentAccountId,
+    prompt: state.draft.prompt,
+    finalPrompt: buildFinalPrompt(state.draft.prompt, state.draft.assets),
+    assets: state.draft.assets,
+    duration: state.draft.duration,
+    resolution: state.draft.resolution,
+    model: state.draft.model,
+    status: 'in_queue',
+    progress: 10,
+    etaSeconds: null,
+    apiTaskId: null,
+    videoUrl: null,
+    localVideoPath: null,
+    errorCode: null,
+    errorMessage: null,
+    requestId: null,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  return {
+    ...state,
+    tasks: [...state.tasks, task]
+  };
+}
+
+export function buildFinalPrompt(prompt: string, assets: AssetReference[]): string {
+  const cleanPrompt = prompt.trim();
+  const labels = assets.map((asset) => asset.label.trim()).filter(Boolean);
+
+  if (labels.length === 0) {
+    return cleanPrompt;
+  }
+
+  if (!cleanPrompt) {
+    return labels.join('\n');
+  }
+
+  return `${cleanPrompt}\n\n${labels.join('\n')}`;
+}
+
+function createSecretReference(input: ApiAccountInput): string {
+  const source = `${input.accessKeyId}:${input.name}:${input.secretAccessKey.length}`;
+  let hash = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+  }
+
+  return `local-secret:${hash.toString(16).padStart(8, '0')}`;
+}
