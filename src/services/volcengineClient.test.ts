@@ -143,4 +143,45 @@ describe('volcengine submit payload', () => {
       status: 'in_queue'
     });
   });
+
+  it('queries through the supplied fetcher and normalizes done responses', async () => {
+    const client = createVolcengineClient({
+      now: () => new Date('2026-06-13T08:00:00.000Z'),
+      fetcher: async (url, init) => {
+        expect(url).toContain('Action=CVSync2AsyncGetResult');
+        expect(init.body).toContain('remote-task-1');
+        return {
+          json: async () => ({
+            code: 10000,
+            data: {
+              status: 'done',
+              video_url: 'https://cdn.example.com/result.mp4',
+              resp_data: '{"Duration":"5.05"}'
+            },
+            message: 'Success',
+            request_id: 'request-query-1'
+          })
+        };
+      }
+    });
+
+    await expect(
+      client.getTaskResult({
+        credentials: {
+          accountId: 'account-1',
+          accessKeyId: 'ak-xiao',
+          secretAccessKey: 'sk-xiao',
+          endpoint: 'https://visual.volcengineapi.com',
+          region: 'cn-north-1',
+          service: 'cv'
+        },
+        apiTaskId: 'remote-task-1'
+      })
+    ).resolves.toEqual({
+      requestId: 'request-query-1',
+      status: 'done',
+      videoUrl: 'https://cdn.example.com/result.mp4',
+      respData: '{"Duration":"5.05"}'
+    });
+  });
 });

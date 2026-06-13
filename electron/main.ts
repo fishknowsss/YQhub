@@ -8,6 +8,10 @@ import {
   createAccountService,
   type SecretVault
 } from '../src/main/services/accountService';
+import { createDownloadService } from '../src/main/services/downloadService';
+import { createQueueService } from '../src/main/services/queueService';
+import { createTaskService } from '../src/main/services/taskService';
+import { createVolcengineClient } from '../src/services/volcengineClient';
 
 interface MainStoreSchema {
   accounts: ApiAccount[];
@@ -25,6 +29,17 @@ const store = new Store<MainStoreSchema>({
 const accountService = createAccountService({
   vault: createElectronSecretVault(store),
   initialAccounts: store.get('accounts') ?? []
+});
+const visualClient = createVolcengineClient();
+const downloadService = createDownloadService();
+const queueService = createQueueService({
+  accountService,
+  client: visualClient
+});
+const taskService = createTaskService({
+  accountService,
+  client: visualClient,
+  downloadService
 });
 
 function createElectronSecretVault(localStore: Store<MainStoreSchema>): SecretVault {
@@ -75,6 +90,8 @@ function registerIpcHandlers(): void {
     accountService.deleteAccount(accountId);
     persistAccounts();
   });
+  ipcMain.handle('tasks:submit', (_event, task) => queueService.submit(task));
+  ipcMain.handle('tasks:refresh', (_event, task) => taskService.refreshTask(task));
 }
 
 async function createWindow(): Promise<void> {

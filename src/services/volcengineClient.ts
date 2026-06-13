@@ -60,10 +60,30 @@ export interface SubmitTaskInput {
   task?: unknown;
 }
 
+export interface GetTaskResultInput {
+  credentials: VisualCredentials;
+  apiTaskId: string;
+}
+
 export interface SubmitTaskResult {
   apiTaskId: string;
   requestId: string;
   status: 'in_queue';
+}
+
+export type VisualTaskStatus =
+  | 'processing'
+  | 'in_queue'
+  | 'generating'
+  | 'done'
+  | 'not_found'
+  | 'expired';
+
+export interface GetTaskResult {
+  requestId: string;
+  status: VisualTaskStatus;
+  videoUrl: string | null;
+  respData: unknown;
 }
 
 export function buildSubmitPayload(input: BuildSubmitPayloadInput): PippitSubmitPayload {
@@ -172,6 +192,22 @@ export function createVolcengineClient(options: CreateVolcengineClientOptions = 
       const raw = await response.json();
 
       return normalizeSubmitTaskResponse(raw);
+    },
+    async getTaskResult(input: GetTaskResultInput): Promise<GetTaskResult> {
+      const request = buildSignedVisualRequest({
+        action: 'CVSync2AsyncGetResult',
+        version: '2022-08-31',
+        credentials: input.credentials,
+        body: {
+          req_key: 'pippit_iv2v_cvtob_master',
+          task_id: input.apiTaskId
+        },
+        now: now()
+      });
+      const response = await fetcher(request.url, request.init);
+      const raw = await response.json();
+
+      return normalizeGetTaskResultResponse(raw);
     }
   };
 }
@@ -196,6 +232,30 @@ function normalizeSubmitTaskResponse(raw: unknown): SubmitTaskResult {
     apiTaskId: taskId,
     requestId: typeof raw.request_id === 'string' ? raw.request_id : '',
     status: 'in_queue'
+  };
+}
+
+function normalizeGetTaskResultResponse(raw: unknown): GetTaskResult {
+  if (!isObject(raw)) {
+    throw new Error('接口返回格式不正确');
+  }
+
+  if (raw.code !== 10000) {
+    throw new Error(String(raw.message ?? '查询失败'));
+  }
+
+  const data = isObject(raw.data) ? raw.data : null;
+  const status = typeof data?.status === 'string' ? data.status : '';
+
+  if (!isVisualTaskStatus(status)) {
+    throw new Error('接口任务状态不正确');
+  }
+
+  return {
+    requestId: typeof raw.request_id === 'string' ? raw.request_id : '',
+    status,
+    videoUrl: typeof data?.video_url === 'string' ? data.video_url : null,
+    respData: data?.resp_data ?? null
   };
 }
 
@@ -241,4 +301,8 @@ function getSigningKey(secret: string, shortDate: string, region: string, servic
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isVisualTaskStatus(value: string): value is VisualTaskStatus {
+  return ['processing', 'in_queue', 'generating', 'done', 'not_found', 'expired'].includes(value);
 }

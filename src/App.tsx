@@ -96,12 +96,40 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
+    if (nativeApi) {
+      const timer = window.setInterval(() => {
+        const refreshableTasks = state.tasks.filter(
+          (task) =>
+            task.apiTaskId &&
+            !['done', 'failed', 'expired', 'not_found'].includes(task.status)
+        );
+
+        for (const task of refreshableTasks) {
+          void nativeApi
+            .refreshTask(task)
+            .then((updatedTask) => {
+              setState((current) => ({
+                ...current,
+                tasks: current.tasks.map((candidate) =>
+                  candidate.id === updatedTask.id ? updatedTask : candidate
+                )
+              }));
+            })
+            .catch((error: unknown) => {
+              setNotice(error instanceof Error ? error.message : '查询失败');
+            });
+        }
+      }, 3500);
+
+      return () => window.clearInterval(timer);
+    }
+
     const timer = window.setInterval(() => {
       setState((current) => advanceTasks(current));
     }, 1400);
 
     return () => window.clearInterval(timer);
-  }, [state.tasks.length]);
+  }, [nativeApi, state.tasks]);
 
   const handleAccountField = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -159,8 +187,38 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
+    if (nativeApi && state.draft.assets.some((asset) => !asset.publicUrl?.trim())) {
+      setNotice('请先配置素材上传方式');
+      return;
+    }
+
+    if (nativeApi) {
+      const nextState = createGenerationTask(state);
+      const task = nextState.tasks.at(-1);
+
+      if (!task) {
+        return;
+      }
+
+      setState(nextState);
+      void nativeApi
+        .submitTask(task)
+        .then((submittedTask) => {
+          setState((current) => ({
+            ...current,
+            tasks: current.tasks.map((candidate) =>
+              candidate.id === submittedTask.id ? submittedTask : candidate
+            )
+          }));
+        })
+        .catch((error: unknown) => {
+          setNotice(error instanceof Error ? error.message : '生成失败');
+        });
+      return;
+    }
+
     setState((current) => createGenerationTask(current));
-  }, [state.currentAccountId, state.draft.prompt]);
+  }, [nativeApi, state]);
 
   const handleClearDraft = useCallback(() => {
     setState((current) => clearDraft(current));
@@ -215,6 +273,22 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     );
   }, []);
 
+  const handleAssetPublicUrl = useCallback((assetId: string, publicUrl: string) => {
+    setState((current) =>
+      updateDraft(current, {
+        assets: current.draft.assets.map((asset) =>
+          asset.id === assetId
+            ? {
+                ...asset,
+                publicUrl,
+                uploadStatus: publicUrl.trim() ? 'uploaded' : 'local'
+              }
+            : asset
+        )
+      })
+    );
+  }, []);
+
   return (
     <main className="app-shell">
       <TopBar
@@ -231,6 +305,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           onAccountField={handleAccountField}
           onAddAccount={handleAddAccount}
           onAssetLabel={handleAssetLabel}
+          onAssetPublicUrl={handleAssetPublicUrl}
           onClearDraft={handleClearDraft}
           onDraftField={handleDraftField}
           onDrop={handleDrop}
@@ -288,6 +363,7 @@ interface ComposePanelProps {
   onAccountField: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddAccount: (event: FormEvent<HTMLFormElement>) => void;
   onAssetLabel: (assetId: string, label: string) => void;
+  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
   onClearDraft: () => void;
   onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
@@ -304,6 +380,7 @@ function ComposePanel({
   onAccountField,
   onAddAccount,
   onAssetLabel,
+  onAssetPublicUrl,
   onClearDraft,
   onDraftField,
   onDrop,
@@ -322,7 +399,7 @@ function ComposePanel({
         onSelectAccount={onSelectAccount}
       />
       <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
-      <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} />
+      <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} onAssetPublicUrl={onAssetPublicUrl} />
       <PromptEditor draft={draft} onDraftField={onDraftField} />
       <GenerateBar onClearDraft={onClearDraft} onGenerate={onGenerate} />
     </section>
@@ -425,9 +502,10 @@ function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
 interface AssetGridProps {
   assets: AssetReference[];
   onAssetLabel: (assetId: string, label: string) => void;
+  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
 }
 
-function AssetGrid({ assets, onAssetLabel }: AssetGridProps) {
+function AssetGrid({ assets, onAssetLabel, onAssetPublicUrl }: AssetGridProps) {
   if (assets.length === 0) {
     return <div className="empty-line">添加素材后可写标注</div>;
   }
@@ -440,6 +518,7 @@ function AssetGrid({ assets, onAssetLabel }: AssetGridProps) {
           index={index}
           key={asset.id}
           onAssetLabel={onAssetLabel}
+          onAssetPublicUrl={onAssetPublicUrl}
         />
       ))}
     </div>
@@ -450,9 +529,10 @@ interface AssetCardProps {
   asset: AssetReference;
   index: number;
   onAssetLabel: (assetId: string, label: string) => void;
+  onAssetPublicUrl: (assetId: string, publicUrl: string) => void;
 }
 
-function AssetCard({ asset, index, onAssetLabel }: AssetCardProps) {
+function AssetCard({ asset, index, onAssetLabel, onAssetPublicUrl }: AssetCardProps) {
   const labelPrefix = getAssetLabelPrefix(asset.type, index);
 
   return (
@@ -466,6 +546,15 @@ function AssetCard({ asset, index, onAssetLabel }: AssetCardProps) {
           value={asset.label}
           onChange={(event) => onAssetLabel(asset.id, event.target.value)}
           placeholder={`${labelPrefix}是...`}
+        />
+      </label>
+      <label>
+        <span>公网 URL</span>
+        <input
+          aria-label={`${labelPrefix}公网 URL`}
+          value={asset.publicUrl ?? ''}
+          onChange={(event) => onAssetPublicUrl(asset.id, event.target.value)}
+          placeholder="https://..."
         />
       </label>
     </article>
@@ -658,7 +747,7 @@ function getAssetType(file: File): AssetReference['type'] {
 }
 
 function getAssetLabelPrefix(type: AssetReference['type'], index: number): string {
-  const order = index + 1;
+  const order = formatOrder(index + 1);
 
   if (type === 'video') {
     return `视频${order}`;
@@ -669,6 +758,11 @@ function getAssetLabelPrefix(type: AssetReference['type'], index: number): strin
   }
 
   return `图${order}`;
+}
+
+function formatOrder(order: number): string {
+  const numerals = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  return numerals[order - 1] ?? String(order);
 }
 
 function getStatusText(status: WorkspaceState['tasks'][number]['status']): string {

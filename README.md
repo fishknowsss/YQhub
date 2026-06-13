@@ -9,10 +9,12 @@
 - 任务创建时绑定 `accountId`。
 - 草稿、账号和任务通过版本化 storage key 自动保存。
 - 支持素材拖拽、点击选择、标注输入。
+- 支持为素材填写公网 URL，真实提交前会阻止本地路径直传。
 - 支持提示词、模型、时长、分辨率选择。
 - 支持 Mock 生成队列、进度条和生成历史。
 - 已建立模型能力层，`seedance2.0fast` 标记为 `pending-docs`。
 - 已建立火山引擎提交 payload 适配层，只映射文档已确认的 `pippit_iv2v_cvtob_master` 字段。
+- Electron 环境下生成任务会走主进程提交、查询和下载服务。
 
 ## 本地运行
 
@@ -61,5 +63,5 @@ npm run electron:build
 1. 接入 Electron 主进程。
 2. 使用 `safeStorage` 或系统 Keychain 保存真实密钥。
 3. 通过 IPC 调用 API、队列、下载和本地文件服务。
-4. 完成火山引擎签名、提交、轮询、下载到 `~/Movies/YQ/exports`。
+4. 补充对象存储上传服务，把本地素材转换为公网 URL。
 5. 打包为 macOS 本地应用。

@@ -82,7 +82,9 @@ describe('App', () => {
     window.yqLocal = {
       listAccounts: vi.fn(async () => []),
       addAccount,
-      deleteAccount: vi.fn(async () => undefined)
+      deleteAccount: vi.fn(async () => undefined),
+      submitTask: vi.fn(),
+      refreshTask: vi.fn()
     };
 
     render(<App storage={storage} />);
@@ -107,5 +109,120 @@ describe('App', () => {
       secretAccessKey: 'sk-native'
     });
     expect(storage.getItem('yq-workspace:v1')).not.toContain('sk-native');
+  });
+
+  it('blocks native submit when a reference asset has no public URL', async () => {
+    const storage = createMemoryStorage();
+    window.URL.createObjectURL = vi.fn(() => 'blob:asset');
+    window.yqLocal = {
+      listAccounts: vi.fn(async () => [
+        {
+          id: 'native-account-1',
+          name: '本机账号',
+          accessKeyId: 'ak-native',
+          secretAccessKeyRef: 'electron-safe:native',
+          endpoint: 'https://visual.volcengineapi.com',
+          region: 'cn-north-1',
+          service: 'cv',
+          concurrencyLimit: 1,
+          enabled: true,
+          createdAt: '2026-06-13T00:00:00.000Z',
+          updatedAt: '2026-06-13T00:00:00.000Z'
+        }
+      ]),
+      addAccount: vi.fn(),
+      deleteAccount: vi.fn(async () => undefined),
+      submitTask: vi.fn(),
+      refreshTask: vi.fn()
+    };
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue('native-account-1');
+    });
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['fake'], 'product.png', { type: 'image/png' })]
+      }
+    });
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条茶饮短片' }
+    });
+    fireEvent.change(screen.getByLabelText('模型'), {
+      target: { value: 'pippit_iv2v_cvtob_master' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    expect(await screen.findByText('请先配置素材上传方式')).toBeInTheDocument();
+    expect(window.yqLocal.submitTask).not.toHaveBeenCalled();
+  });
+
+  it('submits a native task when assets have public URLs', async () => {
+    const storage = createMemoryStorage();
+    window.URL.createObjectURL = vi.fn(() => 'blob:asset');
+    const submitTask = vi.fn(async (task) => ({
+      ...task,
+      apiTaskId: 'remote-task-1',
+      requestId: 'request-1'
+    }));
+    window.yqLocal = {
+      listAccounts: vi.fn(async () => [
+        {
+          id: 'native-account-1',
+          name: '本机账号',
+          accessKeyId: 'ak-native',
+          secretAccessKeyRef: 'electron-safe:native',
+          endpoint: 'https://visual.volcengineapi.com',
+          region: 'cn-north-1',
+          service: 'cv',
+          concurrencyLimit: 1,
+          enabled: true,
+          createdAt: '2026-06-13T00:00:00.000Z',
+          updatedAt: '2026-06-13T00:00:00.000Z'
+        }
+      ]),
+      addAccount: vi.fn(),
+      deleteAccount: vi.fn(async () => undefined),
+      submitTask,
+      refreshTask: vi.fn()
+    };
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue('native-account-1');
+    });
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['fake'], 'product.png', { type: 'image/png' })]
+      }
+    });
+    fireEvent.change(screen.getByLabelText('图一公网 URL'), {
+      target: { value: 'https://cdn.example.com/product.png' }
+    });
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条茶饮短片' }
+    });
+    fireEvent.change(screen.getByLabelText('模型'), {
+      target: { value: 'pippit_iv2v_cvtob_master' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: 'native-account-1',
+          prompt: '生成一条茶饮短片',
+          model: 'pippit_iv2v_cvtob_master',
+          assets: [
+            expect.objectContaining({
+              publicUrl: 'https://cdn.example.com/product.png'
+            })
+          ]
+        })
+      );
+    });
   });
 });

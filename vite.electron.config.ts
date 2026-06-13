@@ -9,22 +9,24 @@ export default defineConfig({
     outDir: 'dist-electron/electron',
     emptyOutDir: true,
     minify: false,
-    lib: {
-      entry: {
+    ssr: true,
+    target: 'node22',
+    rollupOptions: {
+      input: {
         main: path.resolve(__dirname, 'electron/main.ts'),
         preload: path.resolve(__dirname, 'electron/preload.ts')
       },
-      formats: ['es']
-    },
-    rollupOptions: {
       external: [
         'electron',
         'electron-store',
+        'node:fs/promises',
         'node:crypto',
+        'node:os',
         'node:path',
         'node:url'
       ],
       output: {
+        format: 'es',
         entryFileNames: '[name].js'
       }
     }
