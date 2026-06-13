@@ -1,14 +1,21 @@
 import {
+  Activity,
+  ChevronRight,
   Clock3,
   Database,
+  Film,
   ImagePlus,
   KeyRound,
+  Moon,
   Plus,
+  Settings,
+  Sun,
   Trash2,
   Wand2
 } from 'lucide-react';
 import {
   ChangeEvent,
+  ClipboardEvent,
   DragEvent,
   FormEvent,
   ReactNode,
@@ -42,10 +49,13 @@ interface AppProps {
 
 interface AccountFormState extends ApiAccountInput {}
 
+type ThemeMode = 'dark' | 'light';
+
 const DEFAULT_ACCOUNT_FORM: AccountFormState = {
   name: '',
   apiKey: ''
 };
+const THEME_STORAGE_KEY = 'yqhub-theme:v1';
 
 function getBrowserStorage(): StorageLike {
   return window.localStorage;
@@ -53,6 +63,7 @@ function getBrowserStorage(): StorageLike {
 
 export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [state, setState] = useState<WorkspaceState>(() => loadWorkspaceState(storage));
+  const [theme, setTheme] = useState<ThemeMode>(() => loadTheme(storage));
   const [accountForm, setAccountForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
   const [notice, setNotice] = useState('已保存');
   const nativeApi = getNativeLocalApi();
@@ -61,11 +72,19 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     () => state.accounts.find((account) => account.id === state.currentAccountId) ?? null,
     [state.accounts, state.currentAccountId]
   );
+  const completedTasks = useMemo(
+    () => state.tasks.filter((task) => task.status === 'done'),
+    [state.tasks]
+  );
 
   useEffect(() => {
     saveWorkspaceState(storage, state);
     setNotice('已保存');
   }, [state, storage]);
+
+  useEffect(() => {
+    storage.setItem(THEME_STORAGE_KEY, theme);
+  }, [storage, theme]);
 
   useEffect(() => {
     if (!nativeApi) {
@@ -130,6 +149,10 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
 
     return () => window.clearInterval(timer);
   }, [nativeApi, state.tasks]);
+
+  const handleThemeToggle = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   const handleAccountField = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -258,6 +281,15 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     [handleFiles]
   );
 
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLElement>) => {
+      if (event.clipboardData.files.length > 0) {
+        handleFiles(event.clipboardData.files);
+      }
+    },
+    [handleFiles]
+  );
+
   const handleFileInput = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       if (event.target.files) {
@@ -283,14 +315,23 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, []);
 
   return (
-    <main className="app-shell">
-      <TopBar
+    <main
+      aria-label="应用外壳"
+      className="app-shell"
+      data-theme={theme}
+      onPaste={handlePaste}
+    >
+      <BrandRail
         accountCount={state.accounts.length}
+        completedCount={completedTasks.length}
         currentAccountName={currentAccount?.name ?? '未选择'}
         notice={notice}
+        onThemeToggle={handleThemeToggle}
+        taskCount={state.tasks.length}
+        theme={theme}
       />
-      <section className="workspace" aria-label="视频生成工作台">
-        <ComposePanel
+      <section className="studio-grid" aria-label="视频生成工作台">
+        <StudioCanvas
           accountForm={accountForm}
           accounts={state.accounts}
           currentAccountId={state.currentAccountId}
@@ -305,49 +346,103 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           onGenerate={handleGenerate}
           onSelectAccount={handleSelectAccount}
         />
-        <TaskPanel state={state} />
+        <QueueDock state={state} />
       </section>
     </main>
   );
 }
 
-interface TopBarProps {
+interface BrandRailProps {
   accountCount: number;
+  completedCount: number;
   currentAccountName: string;
   notice: string;
+  onThemeToggle: () => void;
+  taskCount: number;
+  theme: ThemeMode;
 }
 
-function TopBar({ accountCount, currentAccountName, notice }: TopBarProps) {
+function BrandRail({
+  accountCount,
+  completedCount,
+  currentAccountName,
+  notice,
+  onThemeToggle,
+  taskCount,
+  theme
+}: BrandRailProps) {
   return (
-    <header className="topbar">
-      <div>
-        <p className="eyebrow">小云雀工作台</p>
-        <h1>YQhub</h1>
+    <aside className="brand-rail" aria-label="品牌栏">
+      <div className="brand-lockup">
+        <YQhubMark />
+        <div>
+          <p>小云雀工作台</p>
+          <h1>YQhub</h1>
+        </div>
       </div>
-      <div className="topbar-status">
-        <StatusPill icon={<KeyRound size={16} />} label={currentAccountName} />
-        <StatusPill icon={<Database size={16} />} label={`${accountCount} 个账号`} />
-        <StatusPill icon={<Clock3 size={16} />} label={notice} />
+
+      <div className="rail-status">
+        <MetricTile label="账号" value={String(accountCount)} />
+        <MetricTile label="队列" value={String(taskCount)} />
+        <MetricTile label="历史" value={String(completedCount)} />
       </div>
-    </header>
+
+      <div className="rail-stack">
+        <RailRow icon={<KeyRound size={16} />} label="当前账号" value={currentAccountName} />
+        <RailRow icon={<Activity size={16} />} label="本机状态" value={notice} />
+        <RailRow icon={<Film size={16} />} label="目标模型" value="Seedance 2.0 Fast" />
+      </div>
+
+      <button className="theme-switch" type="button" onClick={onThemeToggle}>
+        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+        {theme === 'dark' ? '浅色' : '深色'}
+      </button>
+    </aside>
   );
 }
 
-interface StatusPillProps {
+function YQhubMark() {
+  return (
+    <div className="brand-mark" aria-hidden="true">
+      <span />
+      <i />
+    </div>
+  );
+}
+
+interface MetricTileProps {
+  label: string;
+  value: string;
+}
+
+function MetricTile({ label, value }: MetricTileProps) {
+  return (
+    <div className="metric-tile">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+interface RailRowProps {
   icon: ReactNode;
   label: string;
+  value: string;
 }
 
-function StatusPill({ icon, label }: StatusPillProps) {
+function RailRow({ icon, label, value }: RailRowProps) {
   return (
-    <span className="status-pill">
-      {icon}
-      {label}
-    </span>
+    <div className="rail-row">
+      <span className="rail-icon">{icon}</span>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+    </div>
   );
 }
 
-interface ComposePanelProps {
+interface StudioCanvasProps {
   accountForm: AccountFormState;
   accounts: WorkspaceState['accounts'];
   currentAccountId: string | null;
@@ -363,7 +458,7 @@ interface ComposePanelProps {
   onSelectAccount: (event: ChangeEvent<HTMLSelectElement>) => void;
 }
 
-function ComposePanel({
+function StudioCanvas({
   accountForm,
   accounts,
   currentAccountId,
@@ -377,10 +472,31 @@ function ComposePanel({
   onFileInput,
   onGenerate,
   onSelectAccount
-}: ComposePanelProps) {
+}: StudioCanvasProps) {
   return (
-    <section className="compose-panel" aria-label="创作区">
-      <AccountBox
+    <section className="studio-canvas" aria-label="创作台">
+      <div className="studio-header">
+        <div>
+          <p>视频生成</p>
+          <h2>把素材和提示词放进同一个画面</h2>
+        </div>
+        <div className="model-badge">Seedance 2.0 Fast</div>
+      </div>
+
+      <section className="reference-panel" aria-label="参考素材">
+        <PanelHeading icon={<ImagePlus size={18} />} title="参考素材" meta={`${draft.assets.length}/8`} />
+        <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
+        <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} />
+      </section>
+
+      <PromptComposer
+        draft={draft}
+        onClearDraft={onClearDraft}
+        onDraftField={onDraftField}
+        onGenerate={onGenerate}
+      />
+
+      <AccountStrip
         accountForm={accountForm}
         accounts={accounts}
         currentAccountId={currentAccountId}
@@ -388,15 +504,29 @@ function ComposePanel({
         onAddAccount={onAddAccount}
         onSelectAccount={onSelectAccount}
       />
-      <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
-      <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} />
-      <PromptEditor draft={draft} onDraftField={onDraftField} />
-      <GenerateBar onClearDraft={onClearDraft} onGenerate={onGenerate} />
     </section>
   );
 }
 
-interface AccountBoxProps {
+interface PanelHeadingProps {
+  icon: ReactNode;
+  meta?: string;
+  title: string;
+}
+
+function PanelHeading({ icon, meta, title }: PanelHeadingProps) {
+  return (
+    <div className="panel-heading">
+      <div>
+        {icon}
+        <h3>{title}</h3>
+      </div>
+      {meta ? <span>{meta}</span> : null}
+    </div>
+  );
+}
+
+interface AccountStripProps {
   accountForm: AccountFormState;
   accounts: WorkspaceState['accounts'];
   currentAccountId: string | null;
@@ -405,21 +535,17 @@ interface AccountBoxProps {
   onSelectAccount: (event: ChangeEvent<HTMLSelectElement>) => void;
 }
 
-function AccountBox({
+function AccountStrip({
   accountForm,
   accounts,
   currentAccountId,
   onAccountField,
   onAddAccount,
   onSelectAccount
-}: AccountBoxProps) {
+}: AccountStripProps) {
   return (
-    <section className="panel-block account-box">
-      <div className="block-title">
-        <KeyRound size={18} />
-        <h2>API 账号</h2>
-      </div>
-      <div className="field-grid">
+    <section className="account-strip" aria-label="账号设置">
+      <div className="account-current">
         <label>
           <span>当前账号</span>
           <select value={currentAccountId ?? ''} onChange={onSelectAccount} disabled={accounts.length === 0}>
@@ -473,8 +599,10 @@ function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
         multiple
         onChange={onFileInput}
       />
-      <ImagePlus size={26} />
-      <span>拖入素材，或粘贴图片</span>
+      <span className="drop-orbit">
+        <ImagePlus size={28} />
+      </span>
+      <strong>拖入素材，或选择文件</strong>
     </label>
   );
 }
@@ -486,7 +614,7 @@ interface AssetGridProps {
 
 function AssetGrid({ assets, onAssetLabel }: AssetGridProps) {
   if (assets.length === 0) {
-    return <div className="empty-line">添加素材后可写标注</div>;
+    return <div className="empty-line">添加素材后写标注</div>;
   }
 
   return (
@@ -529,30 +657,33 @@ function AssetCard({ asset, index, onAssetLabel }: AssetCardProps) {
   );
 }
 
-interface PromptEditorProps {
+interface PromptComposerProps {
   draft: WorkspaceState['draft'];
+  onClearDraft: () => void;
   onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
+  onGenerate: () => void;
 }
 
-function PromptEditor({ draft, onDraftField }: PromptEditorProps) {
+function PromptComposer({ draft, onClearDraft, onDraftField, onGenerate }: PromptComposerProps) {
   const defaultModel = getDefaultModelCapabilities();
   const selectableModels = Object.values(MODEL_CAPABILITIES).filter(
     (model) => model.submitMappingStatus === 'known'
   );
 
   return (
-    <section className="panel-block prompt-block">
-      <label>
+    <section className="prompt-composer" aria-label="提示词编辑">
+      <PanelHeading icon={<Wand2 size={18} />} title="提示词" />
+      <label className="prompt-field">
         <span>提示词</span>
         <textarea
           aria-label="提示词"
           name="prompt"
           value={draft.prompt}
           onChange={onDraftField}
-          placeholder="写下你想生成的视频内容"
+          placeholder="写下画面、人物、动作、镜头和风格"
         />
       </label>
-      <div className="field-grid two">
+      <div className="control-matrix">
         <label>
           <span>模型</span>
           <select aria-label="模型" name="model" value={draft.model} onChange={onDraftField}>
@@ -584,35 +715,27 @@ function PromptEditor({ draft, onDraftField }: PromptEditorProps) {
           </select>
         </label>
       </div>
+      <div className="generate-bar">
+        <button className="ghost-button" type="button" onClick={onClearDraft}>
+          <Trash2 size={16} />
+          清空
+        </button>
+        <button className="primary-button" type="button" onClick={onGenerate}>
+          <span>生成</span>
+          <i>
+            <ChevronRight size={18} />
+          </i>
+        </button>
+      </div>
     </section>
   );
 }
 
-interface GenerateBarProps {
-  onClearDraft: () => void;
-  onGenerate: () => void;
-}
-
-function GenerateBar({ onClearDraft, onGenerate }: GenerateBarProps) {
-  return (
-    <div className="generate-bar">
-      <button className="ghost-button" type="button" onClick={onClearDraft}>
-        <Trash2 size={16} />
-        清空
-      </button>
-      <button className="primary-button" type="button" onClick={onGenerate}>
-        <Wand2 size={18} />
-        生成
-      </button>
-    </div>
-  );
-}
-
-interface TaskPanelProps {
+interface QueueDockProps {
   state: WorkspaceState;
 }
 
-function TaskPanel({ state }: TaskPanelProps) {
+function QueueDock({ state }: QueueDockProps) {
   const accountNames = useMemo(
     () => new Map(state.accounts.map((account) => [account.id, account.name])),
     [state.accounts]
@@ -620,14 +743,11 @@ function TaskPanel({ state }: TaskPanelProps) {
   const completedTasks = state.tasks.filter((task) => task.status === 'done');
 
   return (
-    <aside className="task-panel" aria-label="任务区">
-      <section className="panel-block queue-block">
-        <div className="block-title">
-          <Clock3 size={18} />
-          <h2>生成队列</h2>
-        </div>
+    <aside className="queue-dock" aria-label="任务区">
+      <section className="dock-panel">
+        <PanelHeading icon={<Clock3 size={18} />} title="生成队列" meta={String(state.tasks.length)} />
         {state.tasks.length === 0 ? (
-          <div className="empty-state">生成后会显示进度</div>
+          <div className="empty-state">生成后显示进度</div>
         ) : (
           <div className="task-list">
             {state.tasks.map((task) => (
@@ -640,13 +760,10 @@ function TaskPanel({ state }: TaskPanelProps) {
           </div>
         )}
       </section>
-      <section className="panel-block history-block">
-        <div className="block-title">
-          <Database size={18} />
-          <h2>生成历史</h2>
-        </div>
+      <section className="dock-panel">
+        <PanelHeading icon={<Database size={18} />} title="生成历史" meta={String(completedTasks.length)} />
         {completedTasks.length === 0 ? (
-          <div className="empty-state">生成完成后会保存在这里</div>
+          <div className="empty-state">完成后自动保存</div>
         ) : (
           <div className="history-list">
             {completedTasks.map((task) => (
@@ -657,6 +774,13 @@ function TaskPanel({ state }: TaskPanelProps) {
             ))}
           </div>
         )}
+      </section>
+      <section className="dock-panel compact">
+        <PanelHeading icon={<Settings size={18} />} title="本机缓存" />
+        <div className="cache-line">
+          <span>草稿和历史保存在本机</span>
+          <strong>{state.draft.assets.length} 个素材</strong>
+        </div>
       </section>
     </aside>
   );
@@ -676,7 +800,7 @@ function TaskItem({ accountName, task }: TaskItemProps) {
       </div>
       <div className="task-meta">
         <span>{getStatusText(task.status)}</span>
-        <span>{task.duration}</span>
+        <span>{formatDurationLabel(task.duration)}</span>
         <span>{task.resolution}</span>
       </div>
       <div className="progress-track" aria-label="生成进度">
@@ -771,6 +895,10 @@ function getStatusText(status: WorkspaceState['tasks'][number]['status']): strin
   };
 
   return statusMap[status];
+}
+
+function loadTheme(storage: StorageLike): ThemeMode {
+  return storage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
 }
 
 function advanceTasks(state: WorkspaceState): WorkspaceState {

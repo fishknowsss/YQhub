@@ -15,6 +15,7 @@
     "relay:typecheck": "tsc -p tsconfig.relay.json",
     "relay:build": "npm run relay:typecheck && vite build -c vite.relay.config.ts",
     "relay:start": "node dist-relay/relayServer.js",
+    "icons:build": "node scripts/generate-icons.mjs",
     "electron:start": "npm run build && npm run electron:build && electron dist-electron/electron/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -59,6 +60,7 @@
     ],
     "mac": {
       "category": "public.app-category.video",
+      "icon": "build/icon.icns",
       "target": [
         "dmg"
       ],
@@ -68,6 +70,7 @@
       "artifactName": "YQhub-${version}-${arch}.${ext}"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",

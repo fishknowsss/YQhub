@@ -12,7 +12,11 @@ describe('App', () => {
     render(<App storage={createMemoryStorage()} />);
 
     expect(screen.getByRole('heading', { name: 'YQhub' })).toBeInTheDocument();
-    expect(screen.getByText('拖入素材，或粘贴图片')).toBeInTheDocument();
+    expect(screen.getByLabelText('品牌栏')).toBeInTheDocument();
+    expect(screen.getByLabelText('创作台')).toBeInTheDocument();
+    expect(screen.getByLabelText('任务区')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '浅色' })).toBeInTheDocument();
+    expect(screen.getByText('拖入素材，或选择文件')).toBeInTheDocument();
     expect(screen.getByLabelText('提示词')).toBeInTheDocument();
     expect(screen.getByLabelText('时长')).toBeInTheDocument();
     expect(screen.getByLabelText('分辨率')).toBeInTheDocument();
@@ -20,7 +24,24 @@ describe('App', () => {
     expect(screen.getByRole('option', { name: '约 15 秒' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '16:9' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
-    expect(screen.getByText('生成后会显示进度')).toBeInTheDocument();
+    expect(screen.getByText('生成后显示进度')).toBeInTheDocument();
+    expect(screen.queryByText(/公网 URL|Secret|Relay/i)).not.toBeInTheDocument();
+  });
+
+  it('toggles the workspace theme and restores it after reopening', () => {
+    const storage = createMemoryStorage();
+    const firstRender = render(<App storage={storage} />);
+
+    expect(screen.getByLabelText('应用外壳')).toHaveAttribute('data-theme', 'dark');
+    fireEvent.click(screen.getByRole('button', { name: '浅色' }));
+    expect(screen.getByLabelText('应用外壳')).toHaveAttribute('data-theme', 'light');
+
+    firstRender.unmount();
+    render(<App storage={storage} />);
+
+    expect(screen.getByLabelText('应用外壳')).toHaveAttribute('data-theme', 'light');
+    fireEvent.click(screen.getByRole('button', { name: '深色' }));
+    expect(screen.getByLabelText('应用外壳')).toHaveAttribute('data-theme', 'dark');
   });
 
   it('creates a task with the selected local API account', () => {
