@@ -255,14 +255,20 @@ textarea::placeholder {
 
 .topbar-side {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) 74px;
+  grid-template-columns: minmax(68px, 0.8fr) minmax(0, 1fr) 74px;
   grid-template-rows: 1fr 1fr;
   gap: 6px;
   min-width: 0;
 }
 
-.topbar-side .status-pill:nth-child(3) {
-  grid-column: 1 / 3;
+.topbar-side .notice-pill {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.topbar-side .version-pill {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .theme-button,
@@ -340,6 +346,10 @@ textarea::placeholder {
   border-radius: 8px;
 }
 
+.version-pill {
+  font-variant-numeric: tabular-nums;
+}
+
 .status-pill svg {
   flex: 0 0 auto;
   color: var(--accent);
@@ -389,7 +399,7 @@ textarea::placeholder {
 
 .preview-column {
   display: grid;
-  grid-template-rows: minmax(318px, auto) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(184px, 230px);
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -570,26 +580,47 @@ textarea::placeholder {
 }
 
 .asset-preview-backdrop {
+  --bg: #fbf7f2;
+  --panel: #fffefd;
+  --panel-soft: #fff7f2;
+  --field: #fffaf6;
+  --line: #eadad2;
+  --text: #251514;
+  --muted: #6f5c57;
+  --accent: #c63a3f;
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 80;
   display: grid;
   place-items: center;
   padding: 28px;
   background: color-mix(in srgb, var(--bg) 72%, rgba(37, 21, 20, 0.34));
   backdrop-filter: blur(8px);
+  animation: preview-backdrop-in 180ms var(--ease);
+}
+
+.asset-preview-backdrop[data-theme="dark"] {
+  --bg: #161211;
+  --panel: #211c1a;
+  --panel-soft: #2a2321;
+  --field: #191514;
+  --line: #423631;
+  --text: #fbf2ec;
+  --muted: #c8b4ab;
+  --accent: #e35c62;
 }
 
 .asset-preview-dialog {
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr);
-  width: min(760px, 92vw);
-  max-height: min(720px, 86vh);
+  width: min(900px, 92vw);
+  height: min(760px, 88vh);
   overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 24px 68px rgba(126, 63, 50, 0.18);
+  animation: preview-dialog-in 220ms var(--ease);
 }
 
 .asset-preview-dialog-head {
@@ -612,23 +643,58 @@ textarea::placeholder {
 
 .asset-preview-dialog-body {
   display: grid;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   place-items: center;
   padding: 14px;
+  overflow: hidden;
   background: color-mix(in srgb, var(--accent) 4%, var(--field));
 }
 
-.asset-preview-dialog-body img,
-.asset-preview-dialog-body video {
+.asset-preview-media-box {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+}
+
+.asset-preview-media-box img,
+.asset-preview-media-box video {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   border-radius: 10px;
 }
 
 .asset-preview-dialog-body audio {
   width: min(420px, 100%);
+}
+
+@keyframes preview-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes preview-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .asset-meta {
@@ -704,8 +770,10 @@ textarea::placeholder {
 .preview-stage {
   position: relative;
   display: grid;
-  width: min(100%, 332px);
-  aspect-ratio: 1 / 1;
+  width: auto;
+  max-width: min(100%, 298px);
+  height: min(100%, 530px);
+  aspect-ratio: 9 / 16;
   place-self: center;
   place-items: center;
   overflow: hidden;
@@ -717,7 +785,7 @@ textarea::placeholder {
 
 .video-shell {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 42px;
+  grid-template-rows: minmax(0, 1fr) 48px;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -728,15 +796,36 @@ textarea::placeholder {
   display: grid;
   min-height: 0;
   place-items: center;
-  padding: 8px 8px 4px;
+  padding: 8px 8px 6px;
   background: color-mix(in srgb, var(--accent) 5%, var(--field));
+  cursor: pointer;
 }
 
-.video-frame video {
+.video-frame:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: -3px;
+}
+
+.video-frame-media {
+  display: grid;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+}
+
+.video-frame-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   background: transparent;
+  border-radius: 10px;
+  pointer-events: none;
 }
 
 .video-controls {
@@ -745,7 +834,7 @@ textarea::placeholder {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 7px 8px 8px;
+  padding: 8px 8px 9px;
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
   border-top: 1px solid var(--line);
@@ -819,19 +908,24 @@ textarea::placeholder {
   display: grid;
   grid-template-rows: 28px minmax(0, 1fr);
   gap: 10px;
+  min-height: 184px;
 }
 
 .task-list {
   display: grid;
   align-content: start;
   gap: 9px;
+  min-width: 0;
   padding-right: 2px;
+  overflow-x: hidden;
 }
 
 .task-item {
   display: grid;
-  gap: 9px;
-  padding: 11px;
+  min-width: 0;
+  gap: 7px;
+  padding: 9px;
+  overflow: hidden;
   background: var(--panel-soft);
   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   border-radius: 10px;
@@ -848,6 +942,7 @@ textarea::placeholder {
 .task-actions {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .task-title {
@@ -878,9 +973,19 @@ textarea::placeholder {
 
 .task-meta {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  flex-wrap: nowrap;
   gap: 6px 9px;
+  overflow: hidden;
   font-size: 12px;
+}
+
+.task-meta span,
+.task-bottom > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .progress-track {
@@ -1102,7 +1207,9 @@ textarea::placeholder {
   }
 
   .preview-stage {
-    width: min(100%, 306px);
+    width: auto;
+    max-width: min(100%, 286px);
+    height: min(100%, 508px);
   }
 
   .asset-dropzone {

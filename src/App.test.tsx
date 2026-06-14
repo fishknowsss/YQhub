@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { createMemoryStorage, WORKSPACE_STORAGE_KEY } from './domain/persistence';
-import type { ApiAccount, WorkspaceState } from './domain/types';
+import type { ApiAccount, GenerationTask, WorkspaceState } from './domain/types';
+import appPackage from '../package.json';
 
 describe('App', () => {
   afterEach(() => {
@@ -13,6 +14,7 @@ describe('App', () => {
     render(<App storage={createMemoryStorage()} />);
 
     expect(screen.getByRole('heading', { name: 'YQhub' })).toBeInTheDocument();
+    expect(screen.getByText(`v${appPackage.version}`)).toBeInTheDocument();
     expect(screen.getByLabelText('视频生成工作台')).toBeInTheDocument();
     expect(screen.getByLabelText('参考素材')).toBeInTheDocument();
     expect(screen.getByLabelText('账号与保存')).toBeInTheDocument();
@@ -294,9 +296,45 @@ describe('App', () => {
     }
   });
 
+  it('keeps the current task compact with a shortened prompt', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const longPrompt = '心脏模型由红白3D打印材料融合组成参考图，过程丝滑，英雄镜头，需要体现非常长的镜头描述和材质变化';
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify(createPollingWorkspace(account, { prompt: longPrompt }))
+    );
+    window.yqhub = createNativeApiMock({
+      accounts: [account]
+    });
+
+    render(<App storage={storage} />);
+
+    const currentPanel = screen.getByLabelText('当前任务');
+
+    await waitFor(() => {
+      expect(within(currentPanel).getByTitle(longPrompt)).toBeInTheDocument();
+    });
+    expect(within(currentPanel).queryByText(longPrompt)).not.toBeInTheDocument();
+    expect(within(currentPanel).getByText('心脏模型由红白3D打印材料融合组成参考图，过程丝滑，英雄镜头...')).toBeInTheDocument();
+  });
+
   it('plays completed local videos with visible custom progress controls', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockImplementation(function mockPlay(this: HTMLMediaElement) {
+        Object.defineProperty(this, 'paused', { value: false, configurable: true });
+        this.dispatchEvent(new Event('play'));
+        return Promise.resolve();
+      });
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, 'pause')
+      .mockImplementation(function mockPause(this: HTMLMediaElement) {
+        Object.defineProperty(this, 'paused', { value: true, configurable: true });
+        this.dispatchEvent(new Event('pause'));
+      });
     storage.setItem(
       WORKSPACE_STORAGE_KEY,
       JSON.stringify(createCompletedWorkspace(account, '/Users/tester/Movies/YQhub/result.mp4'))
@@ -313,11 +351,37 @@ describe('App', () => {
 
     const preview = screen.getByLabelText('视频预览');
     const video = within(preview).getByLabelText('本地视频预览') as HTMLVideoElement;
+    const seek = within(preview).getByLabelText('视频进度') as HTMLInputElement;
 
     expect(video).not.toHaveAttribute('controls');
     expect(video.getAttribute('src')).toContain('file:///Users/tester/Movies/YQhub/result.mp4');
     expect(within(preview).getByRole('button', { name: '播放' })).toBeInTheDocument();
-    expect(within(preview).getByLabelText('视频进度')).toBeInTheDocument();
+    expect(seek).toBeInTheDocument();
+
+    fireEvent.click(within(preview).getByRole('button', { name: '播放或暂停视频' }));
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(within(preview).getByRole('button', { name: '播放或暂停视频' }));
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(video, 'duration', { configurable: true, value: 5.1 });
+    Object.defineProperty(video, 'ended', { configurable: true, value: true });
+    video.currentTime = 3.9;
+    fireEvent.pause(video);
+    expect(seek.value).toBe('5.1');
+
+    fireEvent.ended(video);
+    expect(seek.value).toBe('5.1');
+
+    Object.defineProperty(video, 'paused', { configurable: true, value: true });
+    video.currentTime = 5;
+    fireEvent.click(within(preview).getByRole('button', { name: '播放或暂停视频' }));
+
+    expect(video.currentTime).toBe(0);
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+
+    play.mockRestore();
+    pause.mockRestore();
   });
 
   it('opens image assets in a larger preview and compacts the upload area after assets exist', async () => {
@@ -339,6 +403,13 @@ describe('App', () => {
 
     expect(screen.getByRole('dialog', { name: '素材预览' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'heart.png' })).toBeInTheDocument();
+
+    const backdrop = document.querySelector('.asset-preview-backdrop')!;
+    expect(backdrop.parentElement).toBe(document.body);
+
+    fireEvent.mouseDown(backdrop);
+
+    expect(screen.queryByRole('dialog', { name: '素材预览' })).not.toBeInTheDocument();
   });
 
   it('opens completed videos through the native bridge instead of navigating the app window', async () => {
@@ -526,7 +597,7 @@ function createCompletedWorkspace(account: ApiAccount, localVideoPath: string): 
   };
 }
 
-function createPollingWorkspace(account: ApiAccount): WorkspaceState {
+function createPollingWorkspace(account: ApiAccount, overrides: Partial<GenerationTask> = {}): WorkspaceState {
   return {
     ...createCompletedWorkspace(account, ''),
     tasks: [
@@ -536,7 +607,8 @@ function createPollingWorkspace(account: ApiAccount): WorkspaceState {
         progress: 72,
         etaSeconds: 48,
         videoUrl: null,
-        localVideoPath: null
+        localVideoPath: null,
+        ...overrides
       }
     ]
   };

@@ -22,6 +22,8 @@ import {
   ClipboardEvent,
   DragEvent,
   FormEvent,
+  KeyboardEvent,
+  MouseEvent,
   ReactNode,
   useCallback,
   useEffect,
@@ -29,6 +31,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   addApiAccount,
   clearDraft,
@@ -47,6 +50,7 @@ import {
 import type { ApiAccountInput, AssetReference, GenerationTask, WorkspaceState } from './domain/types';
 import { getNativeLocalApi } from './electronBridge';
 import { getDefaultModelCapabilities, MODEL_CAPABILITIES } from './shared/modelCapabilities';
+import appPackage from '../package.json';
 import './styles.css';
 
 interface AppProps {
@@ -64,6 +68,8 @@ const DEFAULT_ACCOUNT_FORM: AccountFormState = {
 const DEFAULT_EXPORT_DIRECTORY = '~/Downloads';
 const THEME_STORAGE_KEY = 'yqhub-theme:v1';
 const MAX_ASSETS = 8;
+const APP_VERSION = appPackage.version;
+const CURRENT_TASK_TITLE_LIMIT = 30;
 
 function getBrowserStorage(): StorageLike {
   return window.localStorage;
@@ -537,7 +543,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         />
       </section>
       {previewAsset ? (
-        <AssetPreviewDialog asset={previewAsset} onClose={handleCloseAssetPreview} />
+        <AssetPreviewDialog asset={previewAsset} onClose={handleCloseAssetPreview} theme={theme} />
       ) : null}
     </main>
   );
@@ -628,7 +634,8 @@ function TopBar({
       <div className="topbar-side">
         <StatusPill icon={<Clock3 size={15} />} label={`任务 ${activeCount}`} />
         <StatusPill icon={<Film size={15} />} label={`本地记录 ${completedCount}`} />
-        <StatusPill icon={<Activity size={15} />} label={notice} live />
+        <StatusPill className="version-pill" icon={<CheckCircle2 size={15} />} label={`v${APP_VERSION}`} />
+        <StatusPill className="notice-pill" icon={<Activity size={15} />} label={notice} live />
         <button className="theme-button" type="button" onClick={onThemeToggle}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           {theme === 'dark' ? '浅色' : '深色'}
@@ -639,14 +646,15 @@ function TopBar({
 }
 
 interface StatusPillProps {
+  className?: string;
   icon: ReactNode;
   label: string;
   live?: boolean;
 }
 
-function StatusPill({ icon, label, live }: StatusPillProps) {
+function StatusPill({ className = '', icon, label, live }: StatusPillProps) {
   return (
-    <span className="status-pill" role={live ? 'status' : undefined}>
+    <span className={`status-pill${className ? ` ${className}` : ''}`} role={live ? 'status' : undefined}>
       {icon}
       {label}
     </span>
@@ -761,9 +769,26 @@ function AssetCard({ asset, index, onAssetLabel, onPreviewAsset, onRemoveAsset }
   );
 }
 
-function AssetPreviewDialog({ asset, onClose }: { asset: AssetReference; onClose: () => void }) {
-  return (
-    <div className="asset-preview-backdrop" role="presentation">
+function AssetPreviewDialog({
+  asset,
+  onClose,
+  theme
+}: {
+  asset: AssetReference;
+  onClose: () => void;
+  theme: ThemeMode;
+}) {
+  const handleBackdropMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  return createPortal(
+    <div className="asset-preview-backdrop" data-theme={theme} role="presentation" onMouseDown={handleBackdropMouseDown}>
       <section className="asset-preview-dialog" aria-label="素材预览" aria-modal="true" role="dialog">
         <div className="asset-preview-dialog-head">
           <strong>{asset.localName}</strong>
@@ -773,15 +798,20 @@ function AssetPreviewDialog({ asset, onClose }: { asset: AssetReference; onClose
         </div>
         <div className="asset-preview-dialog-body">
           {asset.type === 'image' ? (
-            <img alt={asset.localName} src={asset.previewUrl} />
+            <div className="asset-preview-media-box">
+              <img alt={asset.localName} src={asset.previewUrl} />
+            </div>
           ) : asset.type === 'video' ? (
-            <video controls preload="metadata" src={asset.previewUrl} />
+            <div className="asset-preview-media-box">
+              <video controls preload="metadata" src={asset.previewUrl} />
+            </div>
           ) : (
             <audio controls src={asset.previewUrl} />
           )}
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -942,6 +972,25 @@ function LocalVideoPlayer({ src }: { src: string }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  const syncEndState = useCallback(
+    (video: HTMLVideoElement): boolean => {
+      const endTime = Number.isFinite(video.duration) ? video.duration : duration;
+
+      if (endTime <= 0 || (!video.ended && video.currentTime < endTime - 0.12)) {
+        return false;
+      }
+
+      if (video.currentTime < endTime) {
+        video.currentTime = endTime;
+      }
+
+      setDuration(endTime);
+      setCurrentTime(endTime);
+      return true;
+    },
+    [duration]
+  );
+
   const handleTogglePlay = useCallback(() => {
     const video = videoRef.current;
 
@@ -950,13 +999,29 @@ function LocalVideoPlayer({ src }: { src: string }) {
     }
 
     if (video.paused) {
+      const knownDuration = Number.isFinite(video.duration) ? video.duration : duration;
+      if (video.ended || (knownDuration > 0 && video.currentTime >= knownDuration - 0.12)) {
+        video.currentTime = 0;
+        setCurrentTime(0);
+      }
+
       void video.play().then(() => setPaused(false)).catch(() => setPaused(true));
       return;
     }
 
     video.pause();
     setPaused(true);
-  }, []);
+  }, [duration]);
+
+  const handleFrameKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handleTogglePlay();
+      }
+    },
+    [handleTogglePlay]
+  );
 
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
@@ -969,13 +1034,33 @@ function LocalVideoPlayer({ src }: { src: string }) {
     setCurrentTime(video.currentTime);
   }, []);
 
+  const handleEnded = useCallback(() => {
+    const video = videoRef.current;
+
+    setPaused(true);
+    if (video) {
+      syncEndState(video);
+    }
+  }, [syncEndState]);
+
+  const handlePause = useCallback(() => {
+    const video = videoRef.current;
+
+    setPaused(true);
+    if (video) {
+      syncEndState(video);
+    }
+  }, [syncEndState]);
+
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
 
     if (video) {
-      setCurrentTime(video.currentTime);
+      if (!syncEndState(video)) {
+        setCurrentTime(video.currentTime);
+      }
     }
-  }, []);
+  }, [syncEndState]);
 
   const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextTime = Number(event.target.value);
@@ -990,19 +1075,28 @@ function LocalVideoPlayer({ src }: { src: string }) {
 
   return (
     <div className="video-shell">
-      <div className="video-frame">
-        <video
-          aria-label="本地视频预览"
-          onEnded={() => setPaused(true)}
-          onLoadedMetadata={handleLoadedMetadata}
-          onPause={() => setPaused(true)}
-          onPlay={() => setPaused(false)}
-          onTimeUpdate={handleTimeUpdate}
-          playsInline
-          preload="metadata"
-          ref={videoRef}
-          src={src}
-        />
+      <div
+        aria-label="播放或暂停视频"
+        className="video-frame"
+        onClick={handleTogglePlay}
+        onKeyDown={handleFrameKeyDown}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="video-frame-media">
+          <video
+            aria-label="本地视频预览"
+            onEnded={handleEnded}
+            onLoadedMetadata={handleLoadedMetadata}
+            onPause={handlePause}
+            onPlay={() => setPaused(false)}
+            onTimeUpdate={handleTimeUpdate}
+            playsInline
+            preload="metadata"
+            ref={videoRef}
+            src={src}
+          />
+        </div>
       </div>
       <div className="video-controls">
         <button type="button" onClick={handleTogglePlay} aria-label={paused ? '播放' : '暂停'}>
@@ -1184,11 +1278,13 @@ interface TaskItemProps {
 
 function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProps) {
   const canOpen = Boolean(task.localVideoPath || task.videoUrl);
+  const title = task.prompt || task.finalPrompt || '生成任务';
+  const compactTitle = truncateText(title, CURRENT_TASK_TITLE_LIMIT);
 
   return (
     <article className="task-item" data-status={task.status}>
       <div className="task-title">
-        <strong>{task.prompt || task.finalPrompt}</strong>
+        <strong title={title}>{compactTitle}</strong>
         <StatusIcon status={task.status} />
       </div>
       <div className="task-meta">
@@ -1327,6 +1423,16 @@ function formatVideoTime(value: number): string {
 
 function formatDurationLabel(duration: string): string {
   return `${duration.replace(/s$/u, '')} 秒`;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const characters = Array.from(value);
+
+  if (characters.length <= maxLength) {
+    return value;
+  }
+
+  return `${characters.slice(0, maxLength).join('')}...`;
 }
 
 function formatDateLabel(value: string): string {
