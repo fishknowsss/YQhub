@@ -75,6 +75,27 @@ describe('workspace persistence', () => {
     });
   });
 
+  it('fills missing draft fields from incompatible cached workspaces', () => {
+    const storage = createMemoryStorage();
+    const incompatibleState = {
+      ...createInitialState(),
+      draft: {
+        model: 'seedance2.0fast',
+        duration: '5',
+        resolution: '720p',
+        ratio: '16:9'
+      }
+    };
+
+    storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(incompatibleState));
+
+    expect(loadWorkspaceState(storage).draft).toMatchObject({
+      prompt: '',
+      assets: [],
+      model: 'seedance2.0fast'
+    });
+  });
+
   it('drops placeholder example.com video links from old cached history', () => {
     const storage = createMemoryStorage();
     const state = {

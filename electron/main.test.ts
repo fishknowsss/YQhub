@@ -7,9 +7,13 @@ const electronMock = vi.hoisted(() => {
 
   const windows: Array<{
     closedHandler: WindowHandler | null;
+    focus: ReturnType<typeof vi.fn>;
     loadFile: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
+    options: Record<string, unknown>;
+    readyToShowHandler: WindowHandler | null;
+    show: ReturnType<typeof vi.fn>;
     webContents: {
       getURL: ReturnType<typeof vi.fn>;
       on: ReturnType<typeof vi.fn>;
@@ -19,8 +23,12 @@ const electronMock = vi.hoisted(() => {
 
   class BrowserWindowMock {
     closedHandler: WindowHandler | null = null;
+    focus = vi.fn();
     loadFile = vi.fn(async () => undefined);
     loadURL = vi.fn(async () => undefined);
+    options: Record<string, unknown>;
+    readyToShowHandler: WindowHandler | null = null;
+    show = vi.fn();
     webContents = {
       getURL: vi.fn(() => 'file:///app/index.html'),
       on: vi.fn(),
@@ -30,10 +38,14 @@ const electronMock = vi.hoisted(() => {
       if (event === 'closed') {
         this.closedHandler = handler;
       }
+      if (event === 'ready-to-show') {
+        this.readyToShowHandler = handler;
+      }
       return this;
     });
 
-    constructor() {
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
       windows.push(this);
     }
 
@@ -123,6 +135,22 @@ describe('Electron main process', () => {
     electronMock.windows[0].closedHandler?.();
 
     expect(main.getMainWindowForTest()).toBeNull();
+  });
+
+  it('shows and focuses the window after the renderer is ready', async () => {
+    await importMain();
+    await Promise.resolve();
+
+    const window = electronMock.windows[0];
+
+    expect(window.options).toMatchObject({ show: false });
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
+
+    window.readyToShowHandler?.();
+
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
   });
 
   it('opens generated local videos through the operating system', async () => {

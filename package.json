@@ -1,6 +1,6 @@
 {
   "name": "yqhub",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "author": "fishknowsss",
   "productName": "YQhub",
@@ -11,7 +11,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "electron:typecheck": "tsc -p tsconfig.electron.json",
-    "electron:build": "npm run electron:typecheck && vite build -c vite.electron.config.ts",
+    "electron:build": "npm run electron:typecheck && node scripts/clean-electron-build.mjs && vite build -c vite.electron.config.ts && node scripts/copy-preload.mjs",
     "icons:build": "node scripts/generate-icons.mjs",
     "electron:start": "npm run build && npm run electron:build && electron dist-electron/electron/main.js",
     "test": "vitest run",

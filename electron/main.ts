@@ -11,7 +11,7 @@ import {
 import { createDownloadService } from '../src/main/services/downloadService';
 import { createQueueService } from '../src/main/services/queueService';
 import { createTaskService } from '../src/main/services/taskService';
-import { createArkVideoClient } from '../src/services/arkVideoClient';
+import { createXiaoyunqueClient } from '../src/services/xiaoyunqueClient';
 
 interface MainStoreSchema {
   accounts: ApiAccount[];
@@ -30,7 +30,7 @@ const accountService = createAccountService({
   vault: createElectronSecretVault(store),
   initialAccounts: store.get('accounts') ?? []
 });
-const videoClient = createArkVideoClient();
+const videoClient = createXiaoyunqueClient();
 const downloadService = createDownloadService();
 const queueService = createQueueService({
   accountService,
@@ -102,11 +102,12 @@ async function createWindow(): Promise<void> {
     height: 900,
     minWidth: 1180,
     minHeight: 760,
+    show: false,
     title: 'YQhub',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.cjs')
     }
   });
   mainWindow = window;
@@ -114,6 +115,10 @@ async function createWindow(): Promise<void> {
     if (mainWindow === window) {
       mainWindow = null;
     }
+  });
+  window.on('ready-to-show', () => {
+    window.show();
+    window.focus();
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     void openExternalTarget(url);

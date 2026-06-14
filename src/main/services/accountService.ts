@@ -32,7 +32,7 @@ export function createAccountService({
   vault,
   initialAccounts = []
 }: CreateAccountServiceOptions): AccountService {
-  let accounts = [...initialAccounts];
+  let accounts = initialAccounts.map(normalizeAccount).filter((account) => account.apiKeyRef);
 
   return {
     addAccount(input) {
@@ -77,6 +77,19 @@ export function createAccountService({
       accounts = accounts.filter((candidate) => candidate.id !== accountId);
       vault.deleteSecret(account.apiKeyRef);
     }
+  };
+}
+
+function normalizeAccount(account: ApiAccount): ApiAccount {
+  const legacyAccount = account as ApiAccount & {
+    accessKeyPreview?: string;
+    accessKeyRef?: string;
+  };
+
+  return {
+    ...account,
+    apiKeyPreview: account.apiKeyPreview ?? legacyAccount.accessKeyPreview ?? '已保存',
+    apiKeyRef: account.apiKeyRef ?? legacyAccount.accessKeyRef ?? ''
   };
 }
 

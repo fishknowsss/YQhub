@@ -198,10 +198,14 @@ describe('App', () => {
     expect(screen.queryByLabelText('图一公网 URL')).not.toBeInTheDocument();
   });
 
-  it('does not submit local video references as Ark video URLs', async () => {
+  it('submits local video references through the native client', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
-    const submitTask = vi.fn();
+    const submitTask = vi.fn(async (task) => ({
+      ...task,
+      apiTaskId: 'remote-video-task-1',
+      requestId: 'request-video-1'
+    }));
     window.yqhub = {
       listAccounts: vi.fn(async () => [account]),
       addAccount: vi.fn(),
@@ -227,15 +231,27 @@ describe('App', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
-    expect(screen.getByText('motion.mp4 当前不支持本地视频参考')).toBeInTheDocument();
-    expect(submitTask).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: '参考动作生成视频',
+          assets: [
+            expect.objectContaining({
+              type: 'video',
+              localName: 'motion.mp4',
+              dataUrl: expect.stringMatching(/^data:video\/mp4;base64,/)
+            })
+          ]
+        })
+      );
+    });
   });
 
   it('marks a native task failed when remote submit fails', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
     const submitTask = vi.fn(async () => {
-      throw new Error('方舟接口请求失败');
+      throw new Error('小云雀接口请求失败');
     });
     window.yqhub = {
       listAccounts: vi.fn(async () => [account]),
@@ -259,7 +275,7 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByText('失败')).toBeInTheDocument();
     });
-    expect(within(screen.getByLabelText('任务区')).getByText('方舟接口请求失败')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('任务区')).getByText('小云雀接口请求失败')).toBeInTheDocument();
     expect(submitTask).toHaveBeenCalledTimes(1);
   });
 

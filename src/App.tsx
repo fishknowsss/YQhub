@@ -231,15 +231,6 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
-    const unsupportedLocalVideo = state.draft.assets.find(
-      (asset) => asset.type === 'video' && !asset.publicUrl
-    );
-
-    if (unsupportedLocalVideo) {
-      setNotice(`${unsupportedLocalVideo.localName} 当前不支持本地视频参考`);
-      return;
-    }
-
     const nextState = createGenerationTask(state);
     const task = nextState.tasks.at(-1);
 

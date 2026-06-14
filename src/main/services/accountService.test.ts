@@ -57,4 +57,30 @@ describe('account service', () => {
     expect(service.listAccounts()).toEqual([]);
   });
 
+  it('loads account metadata saved by the previous credential shape', () => {
+    const vault = createMemorySecretVault();
+    const ref = vault.writeSecret('ak-migratedUserKey1234567890');
+    const service = createAccountService({
+      vault,
+      initialAccounts: [
+        {
+          id: 'legacy-account',
+          name: '旧账号',
+          accessKeyPreview: 'ak-...7890',
+          accessKeyRef: ref,
+          concurrencyLimit: 1,
+          enabled: true,
+          createdAt: '2026-06-13T00:00:00.000Z',
+          updatedAt: '2026-06-13T00:00:00.000Z'
+        } as never
+      ]
+    });
+
+    expect(service.listAccounts()[0]).toMatchObject({
+      apiKeyPreview: 'ak-...7890',
+      apiKeyRef: ref
+    });
+    expect(service.getCredentials('legacy-account').apiKey).toBe('ak-migratedUserKey1234567890');
+  });
+
 });

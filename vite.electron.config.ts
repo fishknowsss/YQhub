@@ -13,8 +13,7 @@ export default defineConfig({
     target: 'node22',
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'electron/main.ts'),
-        preload: path.resolve(__dirname, 'electron/preload.ts')
+        main: path.resolve(__dirname, 'electron/main.ts')
       },
       external: [
         'electron',

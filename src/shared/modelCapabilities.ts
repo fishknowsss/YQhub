@@ -2,7 +2,7 @@ export const MODEL_CAPABILITIES = {
   'seedance2.0fast': {
     model: 'seedance2.0fast',
     displayName: 'Seedance 2.0 Fast',
-    apiModelId: 'doubao-seedance-2-0-fast-260128',
+    apiModelId: 'seedance2.0_fast_direct',
     supportsPrompt: true,
     supportsImageReference: true,
     supportsVideoReference: true,
