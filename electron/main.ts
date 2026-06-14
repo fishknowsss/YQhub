@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -15,6 +15,9 @@ import { createXiaoyunqueClient } from '../src/services/xiaoyunqueClient';
 
 interface MainStoreSchema {
   accounts: ApiAccount[];
+  settings: {
+    exportDirectory?: string;
+  };
   secrets: Record<string, string>;
 }
 
@@ -23,6 +26,7 @@ const store = new Store<MainStoreSchema>({
   name: 'yqhub',
   defaults: {
     accounts: [],
+    settings: {},
     secrets: {}
   }
 });
@@ -31,7 +35,9 @@ const accountService = createAccountService({
   initialAccounts: store.get('accounts') ?? []
 });
 const videoClient = createXiaoyunqueClient();
-const downloadService = createDownloadService();
+const downloadService = createDownloadService({
+  outputDirectory: getExportDirectory
+});
 const queueService = createQueueService({
   accountService,
   client: videoClient
@@ -94,6 +100,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('tasks:submit', (_event, task) => queueService.submit(task));
   ipcMain.handle('tasks:refresh', (_event, task) => taskService.refreshTask(task));
   ipcMain.handle('videos:open', (_event, target: string) => openVideoTarget(target));
+  ipcMain.handle('settings:getExportDirectory', async () => getExportDirectory());
+  ipcMain.handle('settings:chooseExportDirectory', () => chooseExportDirectory());
 }
 
 async function createWindow(): Promise<void> {
@@ -165,6 +173,33 @@ app.on('window-all-closed', () => {
 
 export function getMainWindowForTest(): BrowserWindow | null {
   return mainWindow;
+}
+
+function getExportDirectory(): string {
+  return store.get('settings')?.exportDirectory ?? getDefaultExportDirectory();
+}
+
+function getDefaultExportDirectory(): string {
+  return path.join(app.getPath('home'), 'Movies', 'YQhub', 'exports');
+}
+
+async function chooseExportDirectory(): Promise<string> {
+  const result = await dialog.showOpenDialog({
+    defaultPath: getExportDirectory(),
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择保存位置'
+  });
+
+  if (result.canceled || !result.filePaths[0]) {
+    return getExportDirectory();
+  }
+
+  const selectedPath = result.filePaths[0];
+  store.set('settings', {
+    ...(store.get('settings') ?? {}),
+    exportDirectory: selectedPath
+  });
+  return selectedPath;
 }
 
 async function openVideoTarget(target: string): Promise<void> {

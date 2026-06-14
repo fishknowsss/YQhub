@@ -14,9 +14,10 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: 'YQhub' })).toBeInTheDocument();
     expect(screen.getByLabelText('视频生成工作台')).toBeInTheDocument();
-    expect(screen.getByLabelText('素材与账号')).toBeInTheDocument();
-    expect(screen.getByLabelText('创作台')).toBeInTheDocument();
-    expect(screen.getByLabelText('任务区')).toBeInTheDocument();
+    expect(screen.getByLabelText('参考素材')).toBeInTheDocument();
+    expect(screen.getByLabelText('账号与保存')).toBeInTheDocument();
+    expect(screen.getByLabelText('视频预览')).toBeInTheDocument();
+    expect(screen.getByLabelText('历史记录')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '深色' })).toBeInTheDocument();
     expect(screen.getByText('拖入或选择')).toBeInTheDocument();
     expect(screen.getByLabelText('提示词')).toBeInTheDocument();
@@ -25,7 +26,10 @@ describe('App', () => {
     expect(screen.getByLabelText('画幅')).toHaveValue('16:9');
     expect(screen.getByLabelText('模型')).toHaveValue('seedance2.0fast');
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
-    expect(screen.getByText('生成后显示进度')).toBeInTheDocument();
+    expect(screen.getByText('本地记录')).toBeInTheDocument();
+    expect(screen.queryByLabelText('素材与账号')).not.toBeInTheDocument();
+    expect(screen.queryByText('本机缓存')).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText('参考素材')).queryByLabelText('API Key')).not.toBeInTheDocument();
     expect(screen.queryByText(/公网 URL|Secret/i)).not.toBeInTheDocument();
     expect(document.querySelector('.brand-mark')).not.toBeInTheDocument();
   });
@@ -62,7 +66,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
     expect(screen.getByText('请打开桌面端生成')).toBeInTheDocument();
-    expect(within(screen.getByLabelText('任务区')).queryByText('生成一条茶饮短片')).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText('当前任务')).queryByText('生成一条茶饮短片')).not.toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('example.com');
   });
 
@@ -117,14 +121,9 @@ describe('App', () => {
   it('uses the native account API in Electron without persisting the raw key in renderer storage', async () => {
     const storage = createMemoryStorage();
     const addAccount = vi.fn(async () => createNativeAccount());
-    window.yqhub = {
-      listAccounts: vi.fn(async () => []),
+    window.yqhub = createNativeApiMock({
       addAccount,
-      deleteAccount: vi.fn(async () => undefined),
-      submitTask: vi.fn(),
-      refreshTask: vi.fn(),
-      openVideo: vi.fn(async () => undefined)
-    };
+    });
 
     render(<App storage={storage} />);
 
@@ -154,14 +153,10 @@ describe('App', () => {
       apiTaskId: 'remote-task-1',
       requestId: 'request-1'
     }));
-    window.yqhub = {
-      listAccounts: vi.fn(async () => [account]),
-      addAccount: vi.fn(),
-      deleteAccount: vi.fn(async () => undefined),
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
       submitTask,
-      refreshTask: vi.fn(),
-      openVideo: vi.fn(async () => undefined)
-    };
+    });
 
     render(<App storage={storage} />);
 
@@ -206,14 +201,10 @@ describe('App', () => {
       apiTaskId: 'remote-video-task-1',
       requestId: 'request-video-1'
     }));
-    window.yqhub = {
-      listAccounts: vi.fn(async () => [account]),
-      addAccount: vi.fn(),
-      deleteAccount: vi.fn(async () => undefined),
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
       submitTask,
-      refreshTask: vi.fn(),
-      openVideo: vi.fn(async () => undefined)
-    };
+    });
 
     render(<App storage={storage} />);
 
@@ -253,14 +244,10 @@ describe('App', () => {
     const submitTask = vi.fn(async () => {
       throw new Error('小云雀接口请求失败');
     });
-    window.yqhub = {
-      listAccounts: vi.fn(async () => [account]),
-      addAccount: vi.fn(),
-      deleteAccount: vi.fn(async () => undefined),
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
       submitTask,
-      refreshTask: vi.fn(),
-      openVideo: vi.fn(async () => undefined)
-    } as typeof window.yqhub;
+    });
 
     render(<App storage={storage} />);
 
@@ -273,9 +260,9 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
     await waitFor(() => {
-      expect(screen.getByText('失败')).toBeInTheDocument();
+      expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
     });
-    expect(within(screen.getByLabelText('任务区')).getByText('小云雀接口请求失败')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('当前任务')).getByText('小云雀接口请求失败')).toBeInTheDocument();
     expect(submitTask).toHaveBeenCalledTimes(1);
   });
 
@@ -285,16 +272,12 @@ describe('App', () => {
       const storage = createMemoryStorage();
       const account = createNativeAccount();
       storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(createPollingWorkspace(account)));
-      window.yqhub = {
-        listAccounts: vi.fn(async () => [account]),
-        addAccount: vi.fn(),
-        deleteAccount: vi.fn(async () => undefined),
-        submitTask: vi.fn(),
+      window.yqhub = createNativeApiMock({
+        accounts: [account],
         refreshTask: vi.fn(async () => {
           throw new Error('查询失败');
-        }),
-        openVideo: vi.fn(async () => undefined)
-      } as typeof window.yqhub;
+        })
+      });
 
       render(<App storage={storage} />);
 
@@ -303,11 +286,35 @@ describe('App', () => {
         vi.advanceTimersByTime(3500);
       });
 
-      expect(screen.getByText('失败')).toBeInTheDocument();
-      expect(within(screen.getByLabelText('任务区')).getByText('查询失败')).toBeInTheDocument();
+      expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
+      expect(within(screen.getByLabelText('当前任务')).getByText('查询失败')).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('plays completed local videos in the preview stage', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify(createCompletedWorkspace(account, '/Users/tester/Movies/YQhub/result.mp4'))
+    );
+    window.yqhub = createNativeApiMock({
+      accounts: [account]
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('生成一条茶饮短片').length).toBeGreaterThan(0);
+    });
+
+    const preview = screen.getByLabelText('视频预览');
+    const video = within(preview).getByLabelText('本地视频预览') as HTMLVideoElement;
+
+    expect(video).toHaveAttribute('controls');
+    expect(video.getAttribute('src')).toContain('file:///Users/tester/Movies/YQhub/result.mp4');
   });
 
   it('opens completed videos through the native bridge instead of navigating the app window', async () => {
@@ -318,14 +325,10 @@ describe('App', () => {
       WORKSPACE_STORAGE_KEY,
       JSON.stringify(createCompletedWorkspace(account, '/Users/tester/Movies/YQhub/result.mp4'))
     );
-    window.yqhub = {
-      listAccounts: vi.fn(async () => [account]),
-      addAccount: vi.fn(),
-      deleteAccount: vi.fn(async () => undefined),
-      submitTask: vi.fn(),
-      refreshTask: vi.fn(),
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
       openVideo
-    } as typeof window.yqhub;
+    });
 
     render(<App storage={storage} />);
 
@@ -334,12 +337,117 @@ describe('App', () => {
     });
     expect(screen.queryByRole('link', { name: /生成一条茶饮短片/u })).not.toBeInTheDocument();
 
-    const historyPanel = screen.getByText('历史').closest('section')!;
+    const historyPanel = screen.getByLabelText('历史记录');
     fireEvent.click(within(historyPanel).getByRole('button', { name: /生成一条茶饮短片/u }));
 
     expect(openVideo).toHaveBeenCalledWith('/Users/tester/Movies/YQhub/result.mp4');
   });
+
+  it('reuses a completed history item in the current draft', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...createCompletedWorkspace(account, '/Users/tester/Movies/YQhub/result.mp4'),
+        draft: {
+          prompt: '',
+          assets: [],
+          duration: '5',
+          resolution: '720p',
+          ratio: '16:9',
+          model: 'seedance2.0fast'
+        },
+        tasks: [
+          {
+            ...createCompletedWorkspace(account, '/Users/tester/Movies/YQhub/result.mp4').tasks[0],
+            prompt: '复用这条历史提示词',
+            finalPrompt: '复用这条历史提示词\n\n图一是产品正面',
+            assets: [
+              {
+                id: 'asset-history-1',
+                type: 'image',
+                label: '图一是产品正面',
+                localName: 'product.png',
+                previewUrl: 'data:image/png;base64,ZmFrZQ==',
+                dataUrl: 'data:image/png;base64,ZmFrZQ==',
+                mimeType: 'image/png',
+                uploadStatus: 'local'
+              }
+            ],
+            duration: '10',
+            resolution: '480p',
+            ratio: '9:16'
+          }
+        ]
+      } satisfies WorkspaceState)
+    );
+    window.yqhub = createNativeApiMock({
+      accounts: [account]
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('复用这条历史提示词')).toBeInTheDocument();
+    });
+    fireEvent.click(within(screen.getByLabelText('历史记录')).getByRole('button', { name: '复用' }));
+
+    expect(screen.getByLabelText('提示词')).toHaveValue('复用这条历史提示词');
+    expect(screen.getByLabelText('时长')).toHaveValue('10');
+    expect(screen.getByLabelText('清晰度')).toHaveValue('480p');
+    expect(screen.getByLabelText('画幅')).toHaveValue('9:16');
+    expect(screen.getByDisplayValue('图一是产品正面')).toBeInTheDocument();
+  });
+
+  it('loads and changes the export directory through the native bridge', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const chooseExportDirectory = vi.fn(async () => '/Volumes/Studio/YQhub');
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
+      exportDirectory: '/Users/tester/Movies/YQhub/exports',
+      chooseExportDirectory
+    });
+
+    render(<App storage={storage} />);
+
+    await screen.findByText('/Users/tester/Movies/YQhub/exports');
+    fireEvent.click(screen.getByRole('button', { name: '更改' }));
+
+    await screen.findByText('/Volumes/Studio/YQhub');
+    expect(chooseExportDirectory).toHaveBeenCalledTimes(1);
+  });
 });
+
+function createNativeApiMock({
+  accounts = [],
+  addAccount = vi.fn(),
+  chooseExportDirectory = vi.fn(async () => '/Users/tester/Movies/YQhub/exports'),
+  exportDirectory = '/Users/tester/Movies/YQhub/exports',
+  openVideo = vi.fn(async () => undefined),
+  refreshTask = vi.fn(),
+  submitTask = vi.fn()
+}: {
+  accounts?: ApiAccount[];
+  addAccount?: ReturnType<typeof vi.fn>;
+  chooseExportDirectory?: ReturnType<typeof vi.fn>;
+  exportDirectory?: string;
+  openVideo?: ReturnType<typeof vi.fn>;
+  refreshTask?: ReturnType<typeof vi.fn>;
+  submitTask?: ReturnType<typeof vi.fn>;
+} = {}) {
+  return {
+    listAccounts: vi.fn(async () => accounts),
+    addAccount,
+    deleteAccount: vi.fn(async () => undefined),
+    submitTask,
+    refreshTask,
+    openVideo,
+    getExportDirectory: vi.fn(async () => exportDirectory),
+    chooseExportDirectory
+  } as unknown as typeof window.yqhub;
+}
 
 function createNativeAccount(): ApiAccount {
   return {

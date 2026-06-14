@@ -7,6 +7,8 @@ export interface YqhubLocalApi {
   submitTask(task: GenerationTask): Promise<GenerationTask>;
   refreshTask(task: GenerationTask): Promise<GenerationTask>;
   openVideo(target: string): Promise<void>;
+  getExportDirectory(): Promise<string>;
+  chooseExportDirectory(): Promise<string>;
 }
 
 declare global {

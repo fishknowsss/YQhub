@@ -8,6 +8,8 @@ export interface YqhubLocalApi {
   submitTask(task: GenerationTask): Promise<GenerationTask>;
   refreshTask(task: GenerationTask): Promise<GenerationTask>;
   openVideo(target: string): Promise<void>;
+  getExportDirectory(): Promise<string>;
+  chooseExportDirectory(): Promise<string>;
 }
 
 const api: YqhubLocalApi = {
@@ -16,7 +18,9 @@ const api: YqhubLocalApi = {
   deleteAccount: (accountId) => ipcRenderer.invoke('accounts:delete', accountId),
   submitTask: (task) => ipcRenderer.invoke('tasks:submit', task),
   refreshTask: (task) => ipcRenderer.invoke('tasks:refresh', task),
-  openVideo: (target) => ipcRenderer.invoke('videos:open', target)
+  openVideo: (target) => ipcRenderer.invoke('videos:open', target),
+  getExportDirectory: () => ipcRenderer.invoke('settings:getExportDirectory'),
+  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory')
 };
 
 contextBridge.exposeInMainWorld('yqhub', api);

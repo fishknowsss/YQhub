@@ -14,12 +14,14 @@ export interface DownloadService {
 export interface CreateDownloadServiceOptions {
   homeDir?: string;
   now?: () => Date;
+  outputDirectory?: string | (() => string);
   fetchBytes?: (url: string) => Promise<Uint8Array>;
   writeFile?: (path: string, bytes: Uint8Array) => Promise<void>;
 }
 
 export function createDownloadService(options: CreateDownloadServiceOptions = {}): DownloadService {
   const getHomeDir = options.homeDir ?? homedir();
+  const outputDirectory = options.outputDirectory;
   const now = options.now ?? (() => new Date());
   const fetchBytes = options.fetchBytes ?? defaultFetchBytes;
   const writeFile = options.writeFile ?? defaultWriteFile;
@@ -27,14 +29,7 @@ export function createDownloadService(options: CreateDownloadServiceOptions = {}
   return {
     async downloadGeneratedVideo(input) {
       const dateSegment = now().toISOString().slice(0, 10);
-      const outputPath = path.join(
-        getHomeDir,
-        'Movies',
-        'YQhub',
-        'exports',
-        dateSegment,
-        `${sanitizeFileName(input.taskId)}.mp4`
-      );
+      const outputPath = path.join(resolveOutputDirectory(getHomeDir, outputDirectory), dateSegment, `${sanitizeFileName(input.taskId)}.mp4`);
       const bytes = await fetchBytes(input.videoUrl);
       await writeFile(outputPath, bytes);
       return outputPath;
@@ -55,6 +50,21 @@ async function defaultFetchBytes(url: string): Promise<Uint8Array> {
 async function defaultWriteFile(outputPath: string, bytes: Uint8Array): Promise<void> {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await nodeWriteFile(outputPath, bytes);
+}
+
+function resolveOutputDirectory(
+  homeDir: string,
+  outputDirectory: CreateDownloadServiceOptions['outputDirectory']
+): string {
+  if (typeof outputDirectory === 'function') {
+    return outputDirectory();
+  }
+
+  if (outputDirectory) {
+    return outputDirectory;
+  }
+
+  return path.join(homeDir, 'Movies', 'YQhub', 'exports');
 }
 
 function sanitizeFileName(value: string): string {

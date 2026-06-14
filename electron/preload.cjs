@@ -6,5 +6,7 @@ contextBridge.exposeInMainWorld('yqhub', {
   deleteAccount: (accountId) => ipcRenderer.invoke('accounts:delete', accountId),
   submitTask: (task) => ipcRenderer.invoke('tasks:submit', task),
   refreshTask: (task) => ipcRenderer.invoke('tasks:refresh', task),
-  openVideo: (target) => ipcRenderer.invoke('videos:open', target)
+  openVideo: (target) => ipcRenderer.invoke('videos:open', target),
+  getExportDirectory: () => ipcRenderer.invoke('settings:getExportDirectory'),
+  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory')
 });

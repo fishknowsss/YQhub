@@ -78,6 +78,12 @@ const electronMock = vi.hoisted(() => {
       openExternal: vi.fn(async () => undefined),
       openPath: vi.fn(async () => '')
     },
+    dialog: {
+      showOpenDialog: vi.fn(async () => ({
+        canceled: false,
+        filePaths: ['/Volumes/Studio/YQhub']
+      }))
+    },
     state,
     windows
   };
@@ -86,6 +92,7 @@ const electronMock = vi.hoisted(() => {
 vi.mock('electron', () => ({
   app: electronMock.app,
   BrowserWindow: electronMock.BrowserWindowMock,
+  dialog: electronMock.dialog,
   ipcMain: electronMock.ipcMain,
   safeStorage: electronMock.safeStorage,
   shell: electronMock.shell
@@ -166,6 +173,29 @@ describe('Electron main process', () => {
 
     expect(electronMock.shell.openPath).toHaveBeenCalledWith('/Users/tester/Movies/YQhub/result.mp4');
     expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('registers export directory IPC handlers', async () => {
+    await importMain();
+
+    const getHandler = electronMock.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === 'settings:getExportDirectory'
+    )?.[1];
+    const chooseHandler = electronMock.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === 'settings:chooseExportDirectory'
+    )?.[1];
+
+    expect(getHandler).toBeDefined();
+    expect(chooseHandler).toBeDefined();
+
+    await expect(getHandler?.()).resolves.toBe('/Users/tester/Movies/YQhub/exports');
+    await expect(chooseHandler?.()).resolves.toBe('/Volumes/Studio/YQhub');
+    await expect(getHandler?.()).resolves.toBe('/Volumes/Studio/YQhub');
+    expect(electronMock.dialog.showOpenDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        properties: ['openDirectory', 'createDirectory']
+      })
+    );
   });
 
   it('keeps external navigation out of the app window', async () => {

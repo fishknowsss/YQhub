@@ -38,4 +38,27 @@ describe('download service', () => {
       }
     ]);
   });
+
+  it('uses the selected export directory when provided', async () => {
+    const writes: Array<{ path: string; bytes: Uint8Array }> = [];
+    const service = createDownloadService({
+      outputDirectory: '/Volumes/Studio/YQhub',
+      now: () => new Date('2026-06-13T09:10:00.000Z'),
+      fetchBytes: async () => new Uint8Array([4, 5, 6]),
+      writeFile: async (path, bytes) => {
+        writes.push({ path, bytes });
+      }
+    });
+
+    await expect(
+      service.downloadGeneratedVideo({
+        taskId: 'remote-task-9',
+        videoUrl: 'https://cdn.example.com/vertical.mp4'
+      })
+    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '2026-06-13', 'remote-task-9.mp4'));
+    expect(writes[0]).toEqual({
+      path: path.join('/Volumes/Studio/YQhub', '2026-06-13', 'remote-task-9.mp4'),
+      bytes: new Uint8Array([4, 5, 6])
+    });
+  });
 });
