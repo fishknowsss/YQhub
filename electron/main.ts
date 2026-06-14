@@ -180,7 +180,7 @@ function getExportDirectory(): string {
 }
 
 function getDefaultExportDirectory(): string {
-  return path.join(app.getPath('home'), 'Movies', 'YQhub', 'exports');
+  return app.getPath('downloads');
 }
 
 async function chooseExportDirectory(): Promise<string> {

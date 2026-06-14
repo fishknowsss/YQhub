@@ -69,7 +69,7 @@ describe('workspace persistence', () => {
 
     expect(loadWorkspaceState(storage).draft).toMatchObject({
       model: 'seedance2.0fast',
-      duration: '5',
+      duration: '15',
       resolution: '720p',
       ratio: '1:1'
     });

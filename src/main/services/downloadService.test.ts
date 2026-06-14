@@ -3,13 +3,11 @@ import path from 'node:path';
 import { createDownloadService } from './downloadService';
 
 describe('download service', () => {
-  it('downloads a generated video into the local export path', async () => {
+  it('downloads a generated video into the local Downloads path by default', async () => {
     const writes: Array<{ path: string; bytes: Uint8Array }> = [];
     const expectedPath = path.join(
       '/Users/tester',
-      'Movies',
-      'YQhub',
-      'exports',
+      'Downloads',
       '2026-06-13',
       'remote-task-1.mp4'
     );

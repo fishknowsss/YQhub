@@ -439,6 +439,10 @@ textarea::placeholder {
   gap: 10px;
 }
 
+.asset-panel.has-assets {
+  grid-template-rows: 28px 42px minmax(0, 1fr);
+}
+
 .asset-dropzone {
   display: grid;
   place-items: center;
@@ -454,6 +458,13 @@ textarea::placeholder {
     border-color 180ms var(--ease),
     background 180ms var(--ease),
     transform 180ms var(--ease);
+}
+
+.asset-dropzone.is-compact {
+  grid-template-columns: auto auto;
+  place-content: center;
+  min-height: 42px;
+  gap: 8px;
 }
 
 .asset-dropzone:hover {
@@ -527,6 +538,8 @@ textarea::placeholder {
   position: relative;
   display: grid;
   width: 72px;
+  min-height: 0;
+  padding: 0;
   aspect-ratio: 1 / 1;
   place-items: center;
   overflow: hidden;
@@ -534,6 +547,10 @@ textarea::placeholder {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: 9px;
+}
+
+.asset-preview:hover {
+  border-color: var(--accent);
 }
 
 .asset-preview img,
@@ -550,6 +567,68 @@ textarea::placeholder {
   gap: 5px;
   color: var(--accent-strong);
   font-size: 13px;
+}
+
+.asset-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: color-mix(in srgb, var(--bg) 72%, rgba(37, 21, 20, 0.34));
+  backdrop-filter: blur(8px);
+}
+
+.asset-preview-dialog {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  width: min(760px, 92vw);
+  max-height: min(720px, 86vh);
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 68px rgba(126, 63, 50, 0.18);
+}
+
+.asset-preview-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.asset-preview-dialog-head strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-preview-dialog-body {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  padding: 14px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--field));
+}
+
+.asset-preview-dialog-body img,
+.asset-preview-dialog-body video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.asset-preview-dialog-body audio {
+  width: min(420px, 100%);
 }
 
 .asset-meta {
@@ -631,16 +710,71 @@ textarea::placeholder {
   place-items: center;
   overflow: hidden;
   color: var(--muted);
-  background: #251514;
+  background: color-mix(in srgb, var(--accent) 6%, var(--field));
   border: 1px solid var(--line);
   border-radius: 12px;
 }
 
-.preview-stage video {
+.video-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 42px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--field);
+}
+
+.video-frame {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  padding: 8px 8px 4px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--field));
+}
+
+.video-frame video {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #251514;
+  background: transparent;
+}
+
+.video-controls {
+  display: grid;
+  grid-template-columns: auto 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px 8px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+  border-top: 1px solid var(--line);
+}
+
+.video-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 760;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.video-controls span {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.video-seek {
+  width: 100%;
+  accent-color: var(--accent);
 }
 
 .preview-empty {
@@ -838,7 +972,7 @@ textarea::placeholder {
   min-height: 118px;
   padding: 0;
   overflow: hidden;
-  background: #251514;
+  background: color-mix(in srgb, var(--accent) 8%, var(--field));
   border: 1px solid var(--line);
   border-radius: 9px;
 }
@@ -847,7 +981,7 @@ textarea::placeholder {
   width: 100%;
   height: 118px;
   object-fit: contain;
-  background: #251514;
+  background: color-mix(in srgb, var(--accent) 8%, var(--field));
 }
 
 .history-thumb-placeholder {
@@ -855,8 +989,8 @@ textarea::placeholder {
   width: 100%;
   height: 118px;
   place-items: center;
-  color: var(--panel-strong);
-  background: #251514;
+  color: var(--quiet);
+  background: color-mix(in srgb, var(--accent) 8%, var(--field));
 }
 
 .history-title-button {
@@ -1034,6 +1168,10 @@ textarea::placeholder {
 
   .asset-panel {
     grid-template-rows: auto 112px auto;
+  }
+
+  .asset-panel.has-assets {
+    grid-template-rows: auto 42px auto;
   }
 
   .asset-list {

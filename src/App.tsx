@@ -8,6 +8,8 @@ import {
   ImagePlus,
   KeyRound,
   Moon,
+  Pause,
+  Play,
   Plus,
   RotateCcw,
   Sun,
@@ -24,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import {
@@ -58,7 +61,7 @@ const DEFAULT_ACCOUNT_FORM: AccountFormState = {
   name: '',
   apiKey: ''
 };
-const DEFAULT_EXPORT_DIRECTORY = '~/Movies/YQhub/exports';
+const DEFAULT_EXPORT_DIRECTORY = '~/Downloads';
 const THEME_STORAGE_KEY = 'yqhub-theme:v1';
 const MAX_ASSETS = 8;
 
@@ -72,6 +75,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [accountForm, setAccountForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
   const [exportDirectory, setExportDirectory] = useState(DEFAULT_EXPORT_DIRECTORY);
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<AssetReference | null>(null);
   const [notice, setNotice] = useState('就绪');
   const nativeApi = getNativeLocalApi();
 
@@ -325,6 +329,15 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         assets: current.draft.assets.filter((asset) => asset.id !== assetId)
       })
     );
+    setPreviewAsset((current) => (current?.id === assetId ? null : current));
+  }, []);
+
+  const handlePreviewAsset = useCallback((asset: AssetReference) => {
+    setPreviewAsset(asset);
+  }, []);
+
+  const handleCloseAssetPreview = useCallback(() => {
+    setPreviewAsset(null);
   }, []);
 
   const handleRemoveTask = useCallback((taskId: string) => {
@@ -487,6 +500,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
             onAssetLabel={handleAssetLabel}
             onDrop={handleDrop}
             onFileInput={handleFileInput}
+            onPreviewAsset={handlePreviewAsset}
             onRemoveAsset={handleRemoveAsset}
           />
           <PromptPanel draft={state.draft} onDraftField={handleDraftField} />
@@ -522,6 +536,9 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           tasks={completedTasks}
         />
       </section>
+      {previewAsset ? (
+        <AssetPreviewDialog asset={previewAsset} onClose={handleCloseAssetPreview} />
+      ) : null}
     </main>
   );
 }
@@ -642,6 +659,7 @@ interface AssetPanelProps {
   onAssetLabel: (assetId: string, label: string) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
+  onPreviewAsset: (asset: AssetReference) => void;
   onRemoveAsset: (assetId: string) => void;
 }
 
@@ -651,12 +669,15 @@ function AssetPanel({
   onAssetLabel,
   onDrop,
   onFileInput,
+  onPreviewAsset,
   onRemoveAsset
 }: AssetPanelProps) {
+  const hasAssets = assets.length > 0;
+
   return (
-    <section className="workspace-panel asset-panel" aria-label="参考素材">
+    <section className={`workspace-panel asset-panel${hasAssets ? ' has-assets' : ''}`} aria-label="参考素材">
       <PanelHeading title="参考素材" meta={`${assets.length}/${maxAssets}`} icon={<ImagePlus size={18} />} />
-      <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
+      <AssetDropzone compact={hasAssets} onDrop={onDrop} onFileInput={onFileInput} />
       <div className="asset-list" aria-label="参考素材列表">
         {assets.length === 0 ? (
           <div className="empty-state asset-empty">添加参考素材</div>
@@ -667,6 +688,7 @@ function AssetPanel({
               index={index}
               key={asset.id}
               onAssetLabel={onAssetLabel}
+              onPreviewAsset={onPreviewAsset}
               onRemoveAsset={onRemoveAsset}
             />
           ))
@@ -677,14 +699,15 @@ function AssetPanel({
 }
 
 interface AssetDropzoneProps {
+  compact: boolean;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
 }
 
-function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
+function AssetDropzone({ compact, onDrop, onFileInput }: AssetDropzoneProps) {
   return (
     <label
-      className="asset-dropzone"
+      className={`asset-dropzone${compact ? ' is-compact' : ''}`}
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
     >
@@ -694,8 +717,8 @@ function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
         multiple
         onChange={onFileInput}
       />
-      <ImagePlus size={26} />
-      <strong>拖入或选择</strong>
+      <ImagePlus size={compact ? 18 : 26} />
+      <strong>{compact ? '继续添加' : '拖入或选择'}</strong>
     </label>
   );
 }
@@ -704,17 +727,23 @@ interface AssetCardProps {
   asset: AssetReference;
   index: number;
   onAssetLabel: (assetId: string, label: string) => void;
+  onPreviewAsset: (asset: AssetReference) => void;
   onRemoveAsset: (assetId: string) => void;
 }
 
-function AssetCard({ asset, index, onAssetLabel, onRemoveAsset }: AssetCardProps) {
+function AssetCard({ asset, index, onAssetLabel, onPreviewAsset, onRemoveAsset }: AssetCardProps) {
   const labelPrefix = getAssetLabelPrefix(asset.type, index);
 
   return (
     <article className="asset-card">
-      <div className="asset-preview">
+      <button
+        aria-label={`放大预览 ${labelPrefix}`}
+        className="asset-preview"
+        type="button"
+        onClick={() => onPreviewAsset(asset)}
+      >
         <AssetPreview asset={asset} label={labelPrefix} />
-      </div>
+      </button>
       <div className="asset-meta">
         <label>
           <span>{labelPrefix}</span>
@@ -732,6 +761,30 @@ function AssetCard({ asset, index, onAssetLabel, onRemoveAsset }: AssetCardProps
   );
 }
 
+function AssetPreviewDialog({ asset, onClose }: { asset: AssetReference; onClose: () => void }) {
+  return (
+    <div className="asset-preview-backdrop" role="presentation">
+      <section className="asset-preview-dialog" aria-label="素材预览" aria-modal="true" role="dialog">
+        <div className="asset-preview-dialog-head">
+          <strong>{asset.localName}</strong>
+          <button className="icon-button" type="button" aria-label="关闭素材预览" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="asset-preview-dialog-body">
+          {asset.type === 'image' ? (
+            <img alt={asset.localName} src={asset.previewUrl} />
+          ) : asset.type === 'video' ? (
+            <video controls preload="metadata" src={asset.previewUrl} />
+          ) : (
+            <audio controls src={asset.previewUrl} />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 interface AssetPreviewProps {
   asset: AssetReference;
   label: string;
@@ -739,11 +792,11 @@ interface AssetPreviewProps {
 
 function AssetPreview({ asset, label }: AssetPreviewProps) {
   if (asset.type === 'image') {
-    return <img alt={asset.localName} src={asset.previewUrl} />;
+    return <img alt="" aria-hidden="true" src={asset.previewUrl} />;
   }
 
   if (asset.type === 'video') {
-    return <video aria-label={asset.localName} muted preload="metadata" src={asset.previewUrl} />;
+    return <video aria-hidden="true" muted preload="metadata" src={asset.previewUrl} />;
   }
 
   return (
@@ -848,12 +901,7 @@ function PreviewStage({ task }: { task: GenerationTask | null }) {
   if (task?.status === 'done' && src) {
     return (
       <div className="preview-stage">
-        <video
-          aria-label="本地视频预览"
-          controls
-          preload="metadata"
-          src={src}
-        />
+        <LocalVideoPlayer src={src} />
       </div>
     );
   }
@@ -884,6 +932,96 @@ function PreviewStage({ task }: { task: GenerationTask | null }) {
   return (
     <div className="preview-stage">
       <div className="preview-empty">生成后播放本地视频</div>
+    </div>
+  );
+}
+
+function LocalVideoPlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [paused, setPaused] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const handleTogglePlay = useCallback(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    if (video.paused) {
+      void video.play().then(() => setPaused(false)).catch(() => setPaused(true));
+      return;
+    }
+
+    video.pause();
+    setPaused(true);
+  }, []);
+
+  const handleLoadedMetadata = useCallback(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+    setCurrentTime(video.currentTime);
+  }, []);
+
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+
+    if (video) {
+      setCurrentTime(video.currentTime);
+    }
+  }, []);
+
+  const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const nextTime = Number(event.target.value);
+    const video = videoRef.current;
+
+    if (video) {
+      video.currentTime = nextTime;
+    }
+
+    setCurrentTime(nextTime);
+  }, []);
+
+  return (
+    <div className="video-shell">
+      <div className="video-frame">
+        <video
+          aria-label="本地视频预览"
+          onEnded={() => setPaused(true)}
+          onLoadedMetadata={handleLoadedMetadata}
+          onPause={() => setPaused(true)}
+          onPlay={() => setPaused(false)}
+          onTimeUpdate={handleTimeUpdate}
+          playsInline
+          preload="metadata"
+          ref={videoRef}
+          src={src}
+        />
+      </div>
+      <div className="video-controls">
+        <button type="button" onClick={handleTogglePlay} aria-label={paused ? '播放' : '暂停'}>
+          {paused ? <Play size={15} /> : <Pause size={15} />}
+          {paused ? '播放' : '暂停'}
+        </button>
+        <span>{formatVideoTime(currentTime)}</span>
+        <input
+          aria-label="视频进度"
+          className="video-seek"
+          max={duration || 0}
+          min={0}
+          onChange={handleSeek}
+          step="0.1"
+          type="range"
+          value={Math.min(currentTime, duration || currentTime)}
+        />
+        <span>{formatVideoTime(duration)}</span>
+      </div>
     </div>
   );
 }
@@ -1175,6 +1313,16 @@ function getAssetLabelPrefix(type: AssetReference['type'], index: number): strin
 function formatOrder(order: number): string {
   const numerals = ['一', '二', '三', '四', '五', '六', '七', '八'];
   return numerals[order - 1] ?? String(order);
+}
+
+function formatVideoTime(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0:00';
+  }
+
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.floor(value % 60);
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function formatDurationLabel(duration: string): string {

@@ -60,7 +60,7 @@ const electronMock = vi.hoisted(() => {
 
   return {
     app: {
-      getPath: vi.fn(() => '/Users/tester'),
+      getPath: vi.fn((name: string) => (name === 'downloads' ? '/Users/tester/Downloads' : '/Users/tester')),
       on: vi.fn(),
       quit: vi.fn(),
       whenReady: vi.fn(() => state.readyPromise)
@@ -188,7 +188,7 @@ describe('Electron main process', () => {
     expect(getHandler).toBeDefined();
     expect(chooseHandler).toBeDefined();
 
-    await expect(getHandler?.()).resolves.toBe('/Users/tester/Movies/YQhub/exports');
+    await expect(getHandler?.()).resolves.toBe('/Users/tester/Downloads');
     await expect(chooseHandler?.()).resolves.toBe('/Volumes/Studio/YQhub');
     await expect(getHandler?.()).resolves.toBe('/Volumes/Studio/YQhub');
     expect(electronMock.dialog.showOpenDialog).toHaveBeenCalledWith(

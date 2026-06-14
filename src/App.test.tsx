@@ -21,9 +21,9 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '深色' })).toBeInTheDocument();
     expect(screen.getByText('拖入或选择')).toBeInTheDocument();
     expect(screen.getByLabelText('提示词')).toBeInTheDocument();
-    expect(screen.getByLabelText('时长')).toHaveValue('5');
+    expect(screen.getByLabelText('时长')).toHaveValue('15');
     expect(screen.getByLabelText('清晰度')).toHaveValue('720p');
-    expect(screen.getByLabelText('画幅')).toHaveValue('16:9');
+    expect(screen.getByLabelText('画幅')).toHaveValue('9:16');
     expect(screen.getByLabelText('模型')).toHaveValue('seedance2.0fast');
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
     expect(screen.getByText('本地记录')).toBeInTheDocument();
@@ -180,8 +180,9 @@ describe('App', () => {
           accountId: account.id,
           prompt: '生成一条茶饮短片',
           model: 'seedance2.0fast',
+          duration: '15',
           resolution: '720p',
-          ratio: '16:9',
+          ratio: '9:16',
           assets: [
             expect.objectContaining({
               dataUrl: expect.stringMatching(/^data:image\/png;base64,/)
@@ -293,7 +294,7 @@ describe('App', () => {
     }
   });
 
-  it('plays completed local videos in the preview stage', async () => {
+  it('plays completed local videos with visible custom progress controls', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
     storage.setItem(
@@ -313,8 +314,31 @@ describe('App', () => {
     const preview = screen.getByLabelText('视频预览');
     const video = within(preview).getByLabelText('本地视频预览') as HTMLVideoElement;
 
-    expect(video).toHaveAttribute('controls');
+    expect(video).not.toHaveAttribute('controls');
     expect(video.getAttribute('src')).toContain('file:///Users/tester/Movies/YQhub/result.mp4');
+    expect(within(preview).getByRole('button', { name: '播放' })).toBeInTheDocument();
+    expect(within(preview).getByLabelText('视频进度')).toBeInTheDocument();
+  });
+
+  it('opens image assets in a larger preview and compacts the upload area after assets exist', async () => {
+    render(<App storage={createMemoryStorage()} />);
+
+    const dropzone = screen.getByText('拖入或选择').closest('.asset-dropzone');
+    expect(dropzone).not.toHaveClass('is-compact');
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['fake'], 'heart.png', { type: 'image/png' })]
+      }
+    });
+
+    await screen.findByText('图一');
+    expect(screen.getByText('继续添加').closest('.asset-dropzone')).toHaveClass('is-compact');
+
+    fireEvent.click(screen.getByRole('button', { name: '放大预览 图一' }));
+
+    expect(screen.getByRole('dialog', { name: '素材预览' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'heart.png' })).toBeInTheDocument();
   });
 
   it('opens completed videos through the native bridge instead of navigating the app window', async () => {

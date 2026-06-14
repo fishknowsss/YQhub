@@ -1,4 +1,4 @@
-import { createInitialState } from './state';
+import { createInitialDraft, createInitialState } from './state';
 import { getDefaultModelCapabilities, isModelId, MODEL_CAPABILITIES } from '../shared/modelCapabilities';
 import type { GenerationTask, WorkspaceState } from './types';
 
@@ -94,6 +94,7 @@ function getStorageCache(storage: StorageLike): Map<string, string | null> {
 
 function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
   const defaultModel = getDefaultModelCapabilities();
+  const defaultDraft = createInitialDraft();
   const model = isModelId(state.draft.model) ? state.draft.model : defaultModel.model;
   const capabilities = MODEL_CAPABILITIES[model];
   const normalizedModel =
@@ -112,13 +113,13 @@ function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
       model: normalizedModel,
       duration: durationOptions.includes(state.draft.duration)
         ? state.draft.duration
-        : defaultModel.supportedDurations[0],
+        : defaultDraft.duration,
       resolution: resolutionOptions.includes(state.draft.resolution)
         ? state.draft.resolution
-        : defaultModel.supportedResolutions[0],
+        : defaultDraft.resolution,
       ratio: ratioOptions.includes(state.draft.ratio)
         ? state.draft.ratio
-        : inferLegacyRatio(state.draft.resolution, defaultModel.supportedRatios[0])
+        : inferLegacyRatio(state.draft.resolution, defaultDraft.ratio)
     },
     tasks: state.tasks.map(normalizeCachedTask)
   };

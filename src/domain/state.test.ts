@@ -13,9 +13,9 @@ describe('workspace state', () => {
   it('starts with seedance2.0fast and documented default parameters', () => {
     expect(createInitialState().draft).toMatchObject({
       model: 'seedance2.0fast',
-      duration: '5',
+      duration: '15',
       resolution: '720p',
-      ratio: '16:9'
+      ratio: '9:16'
     });
   });
 

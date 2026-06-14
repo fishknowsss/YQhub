@@ -15,9 +15,9 @@ export function createInitialDraft(): DraftState {
   return {
     prompt: '',
     assets: [],
-    duration: '5',
+    duration: '15',
     resolution: '720p',
-    ratio: '16:9',
+    ratio: '9:16',
     model: DEFAULT_MODEL
   };
 }

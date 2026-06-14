@@ -64,7 +64,7 @@ function resolveOutputDirectory(
     return outputDirectory;
   }
 
-  return path.join(homeDir, 'Movies', 'YQhub', 'exports');
+  return path.join(homeDir, 'Downloads');
 }
 
 function sanitizeFileName(value: string): string {
