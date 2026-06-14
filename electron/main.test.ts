@@ -171,7 +171,9 @@ describe('Electron main process', () => {
 
     await openHandler?.({}, '~/Movies/YQhub/result.mp4');
 
-    expect(electronMock.shell.openPath).toHaveBeenCalledWith('/Users/tester/Movies/YQhub/result.mp4');
+    expect(electronMock.shell.openPath).toHaveBeenCalledWith(
+      path.join('/Users/tester', 'Movies', 'YQhub', 'result.mp4')
+    );
     expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
   });
 
