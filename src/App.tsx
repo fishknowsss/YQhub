@@ -533,7 +533,7 @@ function AssetPanel({
       <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
       <div className="asset-list" aria-label="参考素材列表">
         {assets.length === 0 ? (
-          <div className="empty-state">添加参考素材</div>
+          <div className="empty-state asset-empty">添加参考素材</div>
         ) : (
           assets.map((asset, index) => (
             <AssetCard
