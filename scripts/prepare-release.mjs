@@ -11,9 +11,9 @@ const bundleDir = path.join(releaseDir, `YQhub-v${version}`);
 
 const artifactSpecs = [
   {
-    source: `YQhub-${version}-universal.dmg`,
-    target: `YQhub-${version}-mac-universal.dmg`,
-    platform: 'macOS Apple Silicon / Intel'
+    source: `YQhub-${version}-arm64.dmg`,
+    target: `YQhub-${version}-mac-arm64.dmg`,
+    platform: 'macOS Apple Silicon'
   },
   {
     source: `YQhub-${version}-x64.exe`,

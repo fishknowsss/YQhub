@@ -1,12 +1,9 @@
 import type { ApiAccount, ApiAccountInput } from '../../domain/types';
 import { assertXiaoyunqueApiKey, maskApiKey } from '../../domain/state';
 
-declare const __YQHUB_DEFAULT_RELAY_ENDPOINT__: string | undefined;
-
 export interface ApiCredentials {
   accountId: string;
   apiKey: string;
-  relayEndpoint: string;
 }
 
 export interface SecretVault {
@@ -46,7 +43,6 @@ export function createAccountService({
         name: input.name.trim() || '未命名账号',
         apiKeyPreview: maskApiKey(input.apiKey),
         apiKeyRef: vault.writeSecret(input.apiKey.trim()),
-        relayEndpoint: input.relayEndpoint ?? getDefaultRelayEndpoint(),
         concurrencyLimit: input.concurrencyLimit ?? 1,
         enabled: true,
         createdAt: FIXED_TIME,
@@ -73,8 +69,7 @@ export function createAccountService({
 
       return {
         accountId: account.id,
-        apiKey: vault.readSecret(account.apiKeyRef),
-        relayEndpoint: account.relayEndpoint
+        apiKey: vault.readSecret(account.apiKeyRef)
       };
     },
     deleteAccount(accountId) {
@@ -83,21 +78,6 @@ export function createAccountService({
       vault.deleteSecret(account.apiKeyRef);
     }
   };
-}
-
-export function getDefaultRelayEndpoint(): string {
-  const runtimeEndpoint = process.env.YQHUB_RELAY_URL?.trim();
-
-  if (runtimeEndpoint) {
-    return runtimeEndpoint;
-  }
-
-  const buildEndpoint =
-    typeof __YQHUB_DEFAULT_RELAY_ENDPOINT__ === 'string'
-      ? __YQHUB_DEFAULT_RELAY_ENDPOINT__.trim()
-      : '';
-
-  return buildEndpoint || 'https://relay.yqhub.local';
 }
 
 export function createMemorySecretVault(): SecretVault {

@@ -58,8 +58,9 @@ function createTaskForAccount(accountId: string): GenerationTask {
         uploadStatus: 'local'
       }
     ],
-    duration: '～15s',
-    resolution: '16:9',
+    duration: '5',
+    resolution: '720p',
+    ratio: '16:9',
     model: 'seedance2.0fast',
     status: 'in_queue',
     progress: 10,

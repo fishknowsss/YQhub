@@ -1,6 +1,6 @@
 import { createInitialState } from './state';
 import { getDefaultModelCapabilities, isModelId, MODEL_CAPABILITIES } from '../shared/modelCapabilities';
-import type { WorkspaceState } from './types';
+import type { GenerationTask, WorkspaceState } from './types';
 
 export const WORKSPACE_STORAGE_KEY = 'yqhub-workspace:v1';
 const LEGACY_WORKSPACE_STORAGE_KEY = 'yq-workspace:v1';
@@ -101,6 +101,7 @@ function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
   const normalizedCapabilities = MODEL_CAPABILITIES[normalizedModel];
   const durationOptions: string[] = [...normalizedCapabilities.supportedDurations];
   const resolutionOptions: string[] = [...normalizedCapabilities.supportedResolutions];
+  const ratioOptions: string[] = [...normalizedCapabilities.supportedRatios];
 
   return {
     ...state,
@@ -112,7 +113,52 @@ function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
         : defaultModel.supportedDurations[0],
       resolution: resolutionOptions.includes(state.draft.resolution)
         ? state.draft.resolution
-        : defaultModel.supportedResolutions[0]
-    }
+        : defaultModel.supportedResolutions[0],
+      ratio: ratioOptions.includes(state.draft.ratio)
+        ? state.draft.ratio
+        : inferLegacyRatio(state.draft.resolution, defaultModel.supportedRatios[0])
+    },
+    tasks: state.tasks.map(normalizeCachedTask)
   };
+}
+
+function inferLegacyRatio(value: string | undefined, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+
+  return value.includes(':') ? value : fallback;
+}
+
+function normalizeCachedTask(task: GenerationTask): GenerationTask {
+  const normalizedTask: GenerationTask = {
+    ...task,
+    ratio: task.ratio ?? inferLegacyRatio(task.resolution, '16:9'),
+    resolution: task.resolution?.includes(':') ? '720p' : task.resolution
+  };
+  const hasPlaceholderVideoUrl = isPlaceholderVideoUrl(task.videoUrl);
+  const hasPlaceholderLocalPath = task.localVideoPath?.startsWith('~/Movies/YQhub/exports/') ?? false;
+
+  if (!hasPlaceholderVideoUrl && !hasPlaceholderLocalPath) {
+    return normalizedTask;
+  }
+
+  return {
+    ...normalizedTask,
+    videoUrl: hasPlaceholderVideoUrl ? null : task.videoUrl,
+    localVideoPath: hasPlaceholderLocalPath ? null : task.localVideoPath
+  };
+}
+
+function isPlaceholderVideoUrl(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === ['example', 'com'].join('.');
+  } catch {
+    return false;
+  }
 }

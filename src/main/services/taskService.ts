@@ -3,38 +3,41 @@ import type { AccountService } from './accountService';
 import type { ApiCredentials } from './accountService';
 import type { DownloadService } from './downloadService';
 
-export type RelayTaskStatus =
+export type RemoteTaskStatus =
   | 'processing'
   | 'in_queue'
   | 'generating'
   | 'done'
+  | 'failed'
   | 'not_found'
   | 'expired';
 
-export interface RelaySubmitTaskInput {
+export interface RemoteSubmitTaskInput {
   credentials: ApiCredentials;
   task: GenerationTask;
 }
 
-export interface RelaySubmitTaskResult {
+export interface RemoteSubmitTaskResult {
   apiTaskId: string;
   requestId: string;
   status: TaskStatus;
 }
 
-export interface RelayGetTaskResult {
+export interface RemoteGetTaskResult {
   requestId: string;
-  status: RelayTaskStatus;
+  status: RemoteTaskStatus;
   videoUrl: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
   respData: unknown;
 }
 
 export interface VideoTaskClient {
-  submitTask(input: RelaySubmitTaskInput): Promise<RelaySubmitTaskResult>;
+  submitTask(input: RemoteSubmitTaskInput): Promise<RemoteSubmitTaskResult>;
   getTaskResult(input: {
     credentials: ApiCredentials;
     task: GenerationTask;
-  }): Promise<RelayGetTaskResult>;
+  }): Promise<RemoteGetTaskResult>;
 }
 
 export interface TaskService {
@@ -71,6 +74,8 @@ export function createTaskService({
         progress,
         etaSeconds: status === 'done' ? 0 : task.etaSeconds,
         videoUrl: result.videoUrl,
+        errorCode: result.errorCode ?? task.errorCode,
+        errorMessage: result.errorMessage || task.errorMessage,
         requestId: result.requestId,
         updatedAt: new Date(0).toISOString()
       };
@@ -90,7 +95,7 @@ export function createTaskService({
   };
 }
 
-function mapStatus(status: RelayTaskStatus): TaskStatus {
+function mapStatus(status: RemoteTaskStatus): TaskStatus {
   if (status === 'not_found' || status === 'expired') {
     return status;
   }
@@ -98,12 +103,13 @@ function mapStatus(status: RelayTaskStatus): TaskStatus {
   return status;
 }
 
-function mapProgress(status: RelayTaskStatus): number {
-  const progressMap: Record<RelayTaskStatus, number> = {
+function mapProgress(status: RemoteTaskStatus): number {
+  const progressMap: Record<RemoteTaskStatus, number> = {
     in_queue: 18,
     processing: 35,
     generating: 72,
     done: 100,
+    failed: 0,
     not_found: 0,
     expired: 0
   };

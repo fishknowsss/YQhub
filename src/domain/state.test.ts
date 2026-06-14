@@ -13,8 +13,9 @@ describe('workspace state', () => {
   it('starts with seedance2.0fast and documented default parameters', () => {
     expect(createInitialState().draft).toMatchObject({
       model: 'seedance2.0fast',
-      duration: '～15s',
-      resolution: '16:9'
+      duration: '5',
+      resolution: '720p',
+      ratio: '16:9'
     });
   });
 
@@ -36,7 +37,8 @@ describe('workspace state', () => {
     state = updateDraft(state, {
       prompt: '生成一条茶饮短片',
       duration: '5s',
-      resolution: '1080p'
+      resolution: '720p',
+      ratio: '16:9'
     });
     state = createGenerationTask(state);
 
@@ -44,7 +46,8 @@ describe('workspace state', () => {
     state = updateDraft(state, {
       prompt: '生成一条香水短片',
       duration: '10s',
-      resolution: '720p'
+      resolution: '480p',
+      ratio: '9:16'
     });
     state = createGenerationTask(state);
 
@@ -53,13 +56,15 @@ describe('workspace state', () => {
       accountId: xiao.id,
       prompt: '生成一条茶饮短片',
       duration: '5s',
-      resolution: '1080p'
+      resolution: '720p',
+      ratio: '16:9'
     });
     expect(state.tasks[1]).toMatchObject({
       accountId: yan.id,
       prompt: '生成一条香水短片',
       duration: '10s',
-      resolution: '720p'
+      resolution: '480p',
+      ratio: '9:16'
     });
   });
 

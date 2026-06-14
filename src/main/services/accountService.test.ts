@@ -1,16 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createAccountService, createMemorySecretVault } from './accountService';
-
-const previousRelayUrl = process.env.YQHUB_RELAY_URL;
-
-afterEach(() => {
-  if (previousRelayUrl === undefined) {
-    delete process.env.YQHUB_RELAY_URL;
-    return;
-  }
-
-  process.env.YQHUB_RELAY_URL = previousRelayUrl;
-});
 
 describe('account service', () => {
   it('keeps user API key in the local vault and exposes only account metadata', () => {
@@ -20,7 +9,6 @@ describe('account service', () => {
     const account = service.addAccount({
       name: '剪辑账号',
       apiKey: 'ak-localUserKey1234567890',
-      relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
 
@@ -28,14 +16,12 @@ describe('account service', () => {
       name: '剪辑账号',
       apiKeyPreview: 'ak-...7890',
       apiKeyRef: expect.stringMatching(/^vault:/),
-      relayEndpoint: 'https://relay.example.com',
       concurrencyLimit: 1
     });
     expect(JSON.stringify(service.listAccounts())).not.toContain('ak-localUserKey1234567890');
     expect(service.getCredentials(account.id)).toMatchObject({
       accountId: account.id,
-      apiKey: 'ak-localUserKey1234567890',
-      relayEndpoint: 'https://relay.example.com'
+      apiKey: 'ak-localUserKey1234567890'
     });
   });
 
@@ -71,15 +57,4 @@ describe('account service', () => {
     expect(service.listAccounts()).toEqual([]);
   });
 
-  it('uses the configured relay URL when account input does not include one', () => {
-    process.env.YQHUB_RELAY_URL = 'https://relay.yqhub.example.com';
-    const service = createAccountService({ vault: createMemorySecretVault() });
-
-    const account = service.addAccount({
-      name: '剪辑账号',
-      apiKey: 'ak-localUserKey1234567890'
-    });
-
-    expect(account.relayEndpoint).toBe('https://relay.yqhub.example.com');
-  });
 });

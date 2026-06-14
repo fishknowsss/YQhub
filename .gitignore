@@ -1,13 +1,11 @@
 node_modules/
 dist/
 dist-electron/
-dist-relay/
 release/
 coverage/
 .DS_Store
 *.local
 .env
 .env.*
-!.env.example
 build/icon.iconset/
 build/png/

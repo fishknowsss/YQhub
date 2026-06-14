@@ -2,13 +2,14 @@ export const MODEL_CAPABILITIES = {
   'seedance2.0fast': {
     model: 'seedance2.0fast',
     displayName: 'Seedance 2.0 Fast',
-    reqKey: 'pippit_iv2v_v20_cvtob_with_vinput',
+    apiModelId: 'doubao-seedance-2-0-fast-260128',
     supportsPrompt: true,
     supportsImageReference: true,
     supportsVideoReference: true,
-    supportsAudioReference: false,
-    supportedDurations: ['～15s', '～30s', '40～60s'],
-    supportedResolutions: ['16:9', '9:16', '4:3', '3:4'],
+    supportsAudioReference: true,
+    supportedDurations: ['5', '10', '15'],
+    supportedResolutions: ['720p', '480p'],
+    supportedRatios: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'],
     submitMappingStatus: 'known'
   }
 } as const;

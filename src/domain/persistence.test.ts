@@ -12,8 +12,9 @@ describe('workspace persistence', () => {
     const storage = createMemoryStorage();
     const state = updateDraft(createInitialState(), {
       prompt: '一支干净利落的产品视频',
-      duration: '～30s',
-      resolution: '9:16'
+      duration: '10',
+      resolution: '480p',
+      ratio: '9:16'
     });
 
     saveWorkspaceState(storage, state);
@@ -24,8 +25,9 @@ describe('workspace persistence', () => {
     expect(loadWorkspaceState(storage)).toMatchObject({
       draft: {
         prompt: '一支干净利落的产品视频',
-        duration: '～30s',
-        resolution: '9:16'
+        duration: '10',
+        resolution: '480p',
+        ratio: '9:16'
       }
     });
   });
@@ -58,16 +60,56 @@ describe('workspace persistence', () => {
     const storage = createMemoryStorage();
     const staleState = updateDraft(createInitialState(), {
       model: 'pippit_iv2v_cvtob_master',
-      duration: '5s',
+      duration: '40',
       resolution: '1:1'
     });
+    delete (staleState.draft as Partial<typeof staleState.draft>).ratio;
 
     storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(staleState));
 
     expect(loadWorkspaceState(storage).draft).toMatchObject({
       model: 'seedance2.0fast',
-      duration: '～15s',
-      resolution: '16:9'
+      duration: '5',
+      resolution: '720p',
+      ratio: '1:1'
+    });
+  });
+
+  it('drops placeholder example.com video links from old cached history', () => {
+    const storage = createMemoryStorage();
+    const state = {
+      ...createInitialState(),
+      tasks: [
+        {
+          id: 'local-task-1',
+          accountId: 'account-1',
+          prompt: '生成一条茶饮短片',
+          finalPrompt: '生成一条茶饮短片',
+          assets: [],
+          duration: '5',
+          resolution: '720p',
+          ratio: '16:9',
+          model: 'seedance2.0fast',
+          status: 'done' as const,
+          progress: 100,
+          etaSeconds: 0,
+          apiTaskId: 'remote-task-1',
+          videoUrl: 'https://example.com/generated/remote-task-1.mp4',
+          localVideoPath: '~/Movies/YQhub/exports/local-task-1.mp4',
+          errorCode: null,
+          errorMessage: null,
+          requestId: 'request-1',
+          createdAt: '2026-06-13T00:00:00.000Z',
+          updatedAt: '2026-06-13T00:00:00.000Z'
+        }
+      ]
+    };
+
+    storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(state));
+
+    expect(loadWorkspaceState(storage).tasks[0]).toMatchObject({
+      videoUrl: null,
+      localVideoPath: null
     });
   });
 });

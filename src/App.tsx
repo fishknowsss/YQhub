@@ -1,17 +1,19 @@
 import {
   Activity,
-  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
   Clock3,
   Database,
   Film,
+  FolderOpen,
   ImagePlus,
   KeyRound,
   Moon,
   Plus,
-  Settings,
   Sun,
   Trash2,
-  Wand2
+  Wand2,
+  X
 } from 'lucide-react';
 import {
   ChangeEvent,
@@ -28,12 +30,13 @@ import {
   addApiAccount,
   clearDraft,
   createGenerationTask,
-  createInitialState,
+  createInitialDraft,
   isXiaoyunqueApiKey,
   selectAccount,
   updateDraft
 } from './domain/state';
 import {
+  clearWorkspaceState,
   loadWorkspaceState,
   saveWorkspaceState,
   type StorageLike
@@ -49,13 +52,14 @@ interface AppProps {
 
 interface AccountFormState extends ApiAccountInput {}
 
-type ThemeMode = 'dark' | 'light';
+type ThemeMode = 'light' | 'dark';
 
 const DEFAULT_ACCOUNT_FORM: AccountFormState = {
   name: '',
   apiKey: ''
 };
 const THEME_STORAGE_KEY = 'yqhub-theme:v1';
+const MAX_ASSETS = 8;
 
 function getBrowserStorage(): StorageLike {
   return window.localStorage;
@@ -65,7 +69,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [state, setState] = useState<WorkspaceState>(() => loadWorkspaceState(storage));
   const [theme, setTheme] = useState<ThemeMode>(() => loadTheme(storage));
   const [accountForm, setAccountForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
-  const [notice, setNotice] = useState('已保存');
+  const [notice, setNotice] = useState('就绪');
   const nativeApi = getNativeLocalApi();
 
   const currentAccount = useMemo(
@@ -76,10 +80,14 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     () => state.tasks.filter((task) => task.status === 'done'),
     [state.tasks]
   );
+  const activeTasks = useMemo(
+    () => state.tasks.filter((task) => task.status !== 'done'),
+    [state.tasks]
+  );
 
   useEffect(() => {
     saveWorkspaceState(storage, state);
-    setNotice('已保存');
+    setNotice((current) => (current === '就绪' || current === '已保存' ? '已保存' : current));
   }, [state, storage]);
 
   useEffect(() => {
@@ -101,7 +109,10 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       setState((current) => ({
         ...current,
         accounts,
-        currentAccountId: current.currentAccountId ?? accounts[0]?.id ?? null
+        currentAccountId:
+          current.currentAccountId && accounts.some((account) => account.id === current.currentAccountId)
+            ? current.currentAccountId
+            : accounts[0]?.id ?? null
       }));
     });
 
@@ -111,41 +122,35 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, [nativeApi]);
 
   useEffect(() => {
-    if (state.tasks.length === 0) {
+    if (!nativeApi || state.tasks.length === 0) {
       return;
     }
 
-    if (nativeApi) {
-      const timer = window.setInterval(() => {
-        const refreshableTasks = state.tasks.filter(
-          (task) =>
-            task.apiTaskId &&
-            !['done', 'failed', 'expired', 'not_found'].includes(task.status)
-        );
-
-        for (const task of refreshableTasks) {
-          void nativeApi
-            .refreshTask(task)
-            .then((updatedTask) => {
-              setState((current) => ({
-                ...current,
-                tasks: current.tasks.map((candidate) =>
-                  candidate.id === updatedTask.id ? updatedTask : candidate
-                )
-              }));
-            })
-            .catch((error: unknown) => {
-              setNotice(error instanceof Error ? error.message : '查询失败');
-            });
-        }
-      }, 3500);
-
-      return () => window.clearInterval(timer);
-    }
-
     const timer = window.setInterval(() => {
-      setState((current) => advanceTasks(current));
-    }, 1400);
+      const refreshableTasks = state.tasks.filter(
+        (task) =>
+          task.apiTaskId &&
+          !['done', 'failed', 'expired', 'not_found'].includes(task.status)
+      );
+
+      for (const task of refreshableTasks) {
+        void nativeApi
+          .refreshTask(task)
+          .then((updatedTask) => {
+            setState((current) => ({
+              ...current,
+              tasks: current.tasks.map((candidate) =>
+                candidate.id === updatedTask.id ? updatedTask : candidate
+              )
+            }));
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : '查询失败';
+            setNotice(message);
+            setState((current) => markTaskFailed(current, task.id, message));
+          });
+      }
+    }, 3500);
 
     return () => window.clearInterval(timer);
   }, [nativeApi, state.tasks]);
@@ -182,7 +187,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           setState((current) => ({
             ...current,
             accounts: [...current.accounts, account],
-            currentAccountId: current.currentAccountId ?? account.id
+            currentAccountId: account.id
           }));
         } catch (error) {
           setNotice(error instanceof Error ? error.message : '账号添加失败');
@@ -193,6 +198,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       }
 
       setAccountForm(DEFAULT_ACCOUNT_FORM);
+      setNotice('账号已保存');
     },
     [accountForm, nativeApi]
   );
@@ -210,68 +216,143 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   );
 
   const handleGenerate = useCallback(() => {
+    if (!nativeApi) {
+      setNotice('请打开桌面端生成');
+      return;
+    }
+
     if (!state.currentAccountId) {
       setNotice('先添加账号');
       return;
     }
 
-    if (!state.draft.prompt.trim()) {
+    if (!state.draft.prompt.trim() && state.draft.assets.every((asset) => !asset.label.trim())) {
       setNotice('先写提示词');
       return;
     }
 
-    if (nativeApi) {
-      const nextState = createGenerationTask(state);
-      const task = nextState.tasks.at(-1);
+    const unsupportedLocalVideo = state.draft.assets.find(
+      (asset) => asset.type === 'video' && !asset.publicUrl
+    );
 
-      if (!task) {
-        return;
-      }
-
-      setState(nextState);
-      void nativeApi
-        .submitTask(task)
-        .then((submittedTask) => {
-          setState((current) => ({
-            ...current,
-            tasks: current.tasks.map((candidate) =>
-              candidate.id === submittedTask.id ? submittedTask : candidate
-            )
-          }));
-        })
-        .catch((error: unknown) => {
-          setNotice(error instanceof Error ? error.message : '生成失败');
-        });
+    if (unsupportedLocalVideo) {
+      setNotice(`${unsupportedLocalVideo.localName} 当前不支持本地视频参考`);
       return;
     }
 
-    setState((current) => createGenerationTask(current));
+    const nextState = createGenerationTask(state);
+    const task = nextState.tasks.at(-1);
+
+    if (!task) {
+      return;
+    }
+
+    setState(nextState);
+    setNotice('已提交');
+    void nativeApi
+      .submitTask(task)
+      .then((submittedTask) => {
+        setState((current) => ({
+          ...current,
+          tasks: current.tasks.map((candidate) =>
+            candidate.id === submittedTask.id ? submittedTask : candidate
+          )
+        }));
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '生成失败';
+        setNotice(message);
+        setState((current) => markTaskFailed(current, task.id, message));
+      });
   }, [nativeApi, state]);
 
   const handleClearDraft = useCallback(() => {
     setState((current) => clearDraft(current));
+    setNotice('草稿已清空');
   }, []);
 
-  const handleFiles = useCallback((files: FileList | File[]) => {
-    const supportedFiles = Array.from(files)
-      .filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/'))
-      .slice(0, 8);
+  const handleClearWorkspace = useCallback(() => {
+    clearWorkspaceState(storage);
+    setState((current) => ({
+      ...current,
+      draft: createInitialDraft(),
+      tasks: []
+    }));
+    setNotice('缓存已清空');
+  }, [storage]);
 
-    if (supportedFiles.length === 0) {
-      setNotice('素材格式不支持');
-      return;
-    }
-
-    void Promise.all(supportedFiles.map((file, index) => createAssetReference(file, index)))
-      .then((nextAssets) => {
-        setState((current) =>
-          updateDraft(current, {
-            assets: [...current.draft.assets, ...nextAssets]
-          })
-        );
+  const handleRemoveAsset = useCallback((assetId: string) => {
+    setState((current) =>
+      updateDraft(current, {
+        assets: current.draft.assets.filter((asset) => asset.id !== assetId)
       })
-      .catch(() => setNotice('素材读取失败'));
+    );
   }, []);
+
+  const handleRemoveTask = useCallback((taskId: string) => {
+    setState((current) => ({
+      ...current,
+      tasks: current.tasks.filter((task) => task.id !== taskId)
+    }));
+  }, []);
+
+  const handleOpenVideo = useCallback(
+    (task: WorkspaceState['tasks'][number]) => {
+      const target = task.localVideoPath ?? task.videoUrl;
+
+      if (!target) {
+        setNotice('成片还没生成');
+        return;
+      }
+
+      if (nativeApi) {
+        void nativeApi
+          .openVideo(target)
+          .then(() => {
+            setNotice('已打开');
+          })
+          .catch((error: unknown) => {
+            setNotice(error instanceof Error ? error.message : '打开失败');
+          });
+        return;
+      }
+
+      window.open(target, '_blank', 'noopener,noreferrer');
+    },
+    [nativeApi]
+  );
+
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const remainingSlots = Math.max(0, MAX_ASSETS - state.draft.assets.length);
+
+      if (remainingSlots === 0) {
+        setNotice('素材已满');
+        return;
+      }
+
+      const supportedFiles = Array.from(files)
+        .filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/'))
+        .slice(0, remainingSlots);
+
+      if (supportedFiles.length === 0) {
+        setNotice('素材格式不支持');
+        return;
+      }
+
+      void Promise.all(supportedFiles.map((file, index) => createAssetReference(file, index)))
+        .then((nextAssets) => {
+          setState((current) =>
+            updateDraft(current, {
+              assets: [...current.draft.assets, ...nextAssets].slice(0, MAX_ASSETS)
+            })
+          );
+          setNotice('素材已添加');
+        })
+        .catch(() => setNotice('素材读取失败'));
+    },
+    [state.draft.assets.length]
+  );
 
   const handleDrop = useCallback(
     (event: DragEvent<HTMLLabelElement>) => {
@@ -294,6 +375,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     (event: ChangeEvent<HTMLInputElement>) => {
       if (event.target.files) {
         handleFiles(event.target.files);
+        event.target.value = '';
       }
     },
     [handleFiles]
@@ -321,182 +403,135 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       data-theme={theme}
       onPaste={handlePaste}
     >
-      <BrandRail
-        accountCount={state.accounts.length}
+      <TopBar
+        accountName={currentAccount?.name ?? '未选择'}
+        activeCount={activeTasks.length}
         completedCount={completedTasks.length}
-        currentAccountName={currentAccount?.name ?? '未选择'}
         notice={notice}
         onThemeToggle={handleThemeToggle}
-        taskCount={state.tasks.length}
         theme={theme}
       />
-      <section className="studio-grid" aria-label="视频生成工作台">
-        <StudioCanvas
+      <section className="workbench" aria-label="视频生成工作台">
+        <AssetPanel
           accountForm={accountForm}
           accounts={state.accounts}
+          assets={state.draft.assets}
           currentAccountId={state.currentAccountId}
-          draft={state.draft}
+          maxAssets={MAX_ASSETS}
           onAccountField={handleAccountField}
           onAddAccount={handleAddAccount}
           onAssetLabel={handleAssetLabel}
-          onClearDraft={handleClearDraft}
-          onDraftField={handleDraftField}
           onDrop={handleDrop}
           onFileInput={handleFileInput}
-          onGenerate={handleGenerate}
+          onRemoveAsset={handleRemoveAsset}
           onSelectAccount={handleSelectAccount}
         />
-        <QueueDock state={state} />
+        <ComposerPanel
+          assets={state.draft.assets}
+          draft={state.draft}
+          nativeReady={Boolean(nativeApi)}
+          onClearDraft={handleClearDraft}
+          onDraftField={handleDraftField}
+          onGenerate={handleGenerate}
+        />
+        <QueuePanel
+          accounts={state.accounts}
+          onClearWorkspace={handleClearWorkspace}
+          onOpenVideo={handleOpenVideo}
+          onRemoveTask={handleRemoveTask}
+          tasks={state.tasks}
+        />
       </section>
     </main>
   );
 }
 
-interface BrandRailProps {
-  accountCount: number;
+interface TopBarProps {
+  accountName: string;
+  activeCount: number;
   completedCount: number;
-  currentAccountName: string;
   notice: string;
   onThemeToggle: () => void;
-  taskCount: number;
   theme: ThemeMode;
 }
 
-function BrandRail({
-  accountCount,
+function TopBar({
+  accountName,
+  activeCount,
   completedCount,
-  currentAccountName,
   notice,
   onThemeToggle,
-  taskCount,
   theme
-}: BrandRailProps) {
+}: TopBarProps) {
   return (
-    <aside className="brand-rail" aria-label="品牌栏">
-      <div className="brand-lockup">
-        <YQhubMark />
-        <div>
-          <p>小云雀工作台</p>
-          <h1>YQhub</h1>
-        </div>
+    <header className="topbar">
+      <div className="brand-word">
+        <h1>YQhub</h1>
+        <span>小云雀工作台</span>
       </div>
-
-      <div className="rail-status">
-        <MetricTile label="账号" value={String(accountCount)} />
-        <MetricTile label="队列" value={String(taskCount)} />
-        <MetricTile label="历史" value={String(completedCount)} />
+      <div className="topbar-status" aria-label="状态">
+        <StatusPill icon={<KeyRound size={15} />} label={accountName} />
+        <StatusPill icon={<Clock3 size={15} />} label={`队列 ${activeCount}`} />
+        <StatusPill icon={<Database size={15} />} label={`历史 ${completedCount}`} />
+        <StatusPill icon={<Activity size={15} />} label={notice} tone="quiet" live />
       </div>
-
-      <div className="rail-stack">
-        <RailRow icon={<KeyRound size={16} />} label="当前账号" value={currentAccountName} />
-        <RailRow icon={<Activity size={16} />} label="本机状态" value={notice} />
-        <RailRow icon={<Film size={16} />} label="目标模型" value="Seedance 2.0 Fast" />
-      </div>
-
-      <button className="theme-switch" type="button" onClick={onThemeToggle}>
-        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+      <button className="theme-button" type="button" onClick={onThemeToggle}>
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         {theme === 'dark' ? '浅色' : '深色'}
       </button>
-    </aside>
+    </header>
   );
 }
 
-function YQhubMark() {
-  return (
-    <div className="brand-mark" aria-hidden="true">
-      <span />
-      <i />
-    </div>
-  );
-}
-
-interface MetricTileProps {
-  label: string;
-  value: string;
-}
-
-function MetricTile({ label, value }: MetricTileProps) {
-  return (
-    <div className="metric-tile">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-interface RailRowProps {
+interface StatusPillProps {
   icon: ReactNode;
   label: string;
-  value: string;
+  live?: boolean;
+  tone?: 'quiet';
 }
 
-function RailRow({ icon, label, value }: RailRowProps) {
+function StatusPill({ icon, label, live, tone }: StatusPillProps) {
   return (
-    <div className="rail-row">
-      <span className="rail-icon">{icon}</span>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </div>
+    <span className="status-pill" data-tone={tone} role={live ? 'status' : undefined}>
+      {icon}
+      {label}
+    </span>
   );
 }
 
-interface StudioCanvasProps {
+interface AssetPanelProps {
   accountForm: AccountFormState;
   accounts: WorkspaceState['accounts'];
+  assets: AssetReference[];
   currentAccountId: string | null;
-  draft: WorkspaceState['draft'];
+  maxAssets: number;
   onAccountField: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddAccount: (event: FormEvent<HTMLFormElement>) => void;
   onAssetLabel: (assetId: string, label: string) => void;
-  onClearDraft: () => void;
-  onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
-  onGenerate: () => void;
+  onRemoveAsset: (assetId: string) => void;
   onSelectAccount: (event: ChangeEvent<HTMLSelectElement>) => void;
 }
 
-function StudioCanvas({
+function AssetPanel({
   accountForm,
   accounts,
+  assets,
   currentAccountId,
-  draft,
+  maxAssets,
   onAccountField,
   onAddAccount,
   onAssetLabel,
-  onClearDraft,
-  onDraftField,
   onDrop,
   onFileInput,
-  onGenerate,
+  onRemoveAsset,
   onSelectAccount
-}: StudioCanvasProps) {
+}: AssetPanelProps) {
   return (
-    <section className="studio-canvas" aria-label="创作台">
-      <div className="studio-header">
-        <div>
-          <p>视频生成</p>
-          <h2>把素材和提示词放进同一个画面</h2>
-        </div>
-        <div className="model-badge">Seedance 2.0 Fast</div>
-      </div>
-
-      <section className="reference-panel" aria-label="参考素材">
-        <PanelHeading icon={<ImagePlus size={18} />} title="参考素材" meta={`${draft.assets.length}/8`} />
-        <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
-        <AssetGrid assets={draft.assets} onAssetLabel={onAssetLabel} />
-      </section>
-
-      <PromptComposer
-        draft={draft}
-        onClearDraft={onClearDraft}
-        onDraftField={onDraftField}
-        onGenerate={onGenerate}
-      />
-
-      <AccountStrip
+    <aside className="workspace-panel asset-panel" aria-label="素材与账号">
+      <PanelHeading title="素材" meta={`${assets.length}/${maxAssets}`} icon={<ImagePlus size={18} />} />
+      <AccountBlock
         accountForm={accountForm}
         accounts={accounts}
         currentAccountId={currentAccountId}
@@ -504,29 +539,27 @@ function StudioCanvas({
         onAddAccount={onAddAccount}
         onSelectAccount={onSelectAccount}
       />
-    </section>
-  );
-}
-
-interface PanelHeadingProps {
-  icon: ReactNode;
-  meta?: string;
-  title: string;
-}
-
-function PanelHeading({ icon, meta, title }: PanelHeadingProps) {
-  return (
-    <div className="panel-heading">
-      <div>
-        {icon}
-        <h3>{title}</h3>
+      <AssetDropzone onDrop={onDrop} onFileInput={onFileInput} />
+      <div className="asset-list" aria-label="参考素材列表">
+        {assets.length === 0 ? (
+          <div className="empty-state">添加参考素材</div>
+        ) : (
+          assets.map((asset, index) => (
+            <AssetCard
+              asset={asset}
+              index={index}
+              key={asset.id}
+              onAssetLabel={onAssetLabel}
+              onRemoveAsset={onRemoveAsset}
+            />
+          ))
+        )}
       </div>
-      {meta ? <span>{meta}</span> : null}
-    </div>
+    </aside>
   );
 }
 
-interface AccountStripProps {
+interface AccountBlockProps {
   accountForm: AccountFormState;
   accounts: WorkspaceState['accounts'];
   currentAccountId: string | null;
@@ -535,45 +568,46 @@ interface AccountStripProps {
   onSelectAccount: (event: ChangeEvent<HTMLSelectElement>) => void;
 }
 
-function AccountStrip({
+function AccountBlock({
   accountForm,
   accounts,
   currentAccountId,
   onAccountField,
   onAddAccount,
   onSelectAccount
-}: AccountStripProps) {
+}: AccountBlockProps) {
   return (
-    <section className="account-strip" aria-label="账号设置">
-      <div className="account-current">
-        <label>
-          <span>当前账号</span>
-          <select value={currentAccountId ?? ''} onChange={onSelectAccount} disabled={accounts.length === 0}>
-            {accounts.length === 0 ? <option value="">先添加账号</option> : null}
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <section className="account-block" aria-label="账号">
+      <label>
+        <span>当前账号</span>
+        <select value={currentAccountId ?? ''} onChange={onSelectAccount} disabled={accounts.length === 0}>
+          {accounts.length === 0 ? <option value="">未添加</option> : null}
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <form className="account-form" onSubmit={onAddAccount}>
         <label>
           <span>账号名</span>
-          <input name="name" value={accountForm.name} onChange={onAccountField} placeholder="剪辑账号" />
+          <input name="name" value={accountForm.name} onChange={onAccountField} placeholder="我的账号" />
         </label>
         <label>
           <span>API Key</span>
           <input
+            autoComplete="off"
             name="apiKey"
+            spellCheck={false}
+            type="password"
             value={accountForm.apiKey}
             onChange={onAccountField}
             placeholder="ak-..."
           />
         </label>
-        <button className="secondary-button" type="submit">
-          <Plus size={16} />
+        <button className="small-button" type="submit">
+          <Plus size={15} />
           添加
         </button>
       </form>
@@ -599,35 +633,9 @@ function AssetDropzone({ onDrop, onFileInput }: AssetDropzoneProps) {
         multiple
         onChange={onFileInput}
       />
-      <span className="drop-orbit">
-        <ImagePlus size={28} />
-      </span>
-      <strong>拖入素材，或选择文件</strong>
+      <ImagePlus size={26} />
+      <strong>拖入或选择</strong>
     </label>
-  );
-}
-
-interface AssetGridProps {
-  assets: AssetReference[];
-  onAssetLabel: (assetId: string, label: string) => void;
-}
-
-function AssetGrid({ assets, onAssetLabel }: AssetGridProps) {
-  if (assets.length === 0) {
-    return <div className="empty-line">添加素材后写标注</div>;
-  }
-
-  return (
-    <div className="asset-grid">
-      {assets.map((asset, index) => (
-        <AssetCard
-          asset={asset}
-          index={index}
-          key={asset.id}
-          onAssetLabel={onAssetLabel}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -635,45 +643,90 @@ interface AssetCardProps {
   asset: AssetReference;
   index: number;
   onAssetLabel: (assetId: string, label: string) => void;
+  onRemoveAsset: (assetId: string) => void;
 }
 
-function AssetCard({ asset, index, onAssetLabel }: AssetCardProps) {
+function AssetCard({ asset, index, onAssetLabel, onRemoveAsset }: AssetCardProps) {
   const labelPrefix = getAssetLabelPrefix(asset.type, index);
 
   return (
     <article className="asset-card">
       <div className="asset-preview">
-        {asset.type === 'image' ? <img alt={asset.localName} src={asset.previewUrl} /> : <span>{labelPrefix}</span>}
+        <AssetPreview asset={asset} label={labelPrefix} />
       </div>
-      <label>
-        <span>{labelPrefix}</span>
-        <input
-          value={asset.label}
-          onChange={(event) => onAssetLabel(asset.id, event.target.value)}
-          placeholder={`${labelPrefix}是...`}
-        />
-      </label>
+      <div className="asset-meta">
+        <label>
+          <span>{labelPrefix}</span>
+          <input
+            value={asset.label}
+            onChange={(event) => onAssetLabel(asset.id, event.target.value)}
+            placeholder={`${labelPrefix}是...`}
+          />
+        </label>
+        <button aria-label={`移除${labelPrefix}`} className="icon-button" type="button" onClick={() => onRemoveAsset(asset.id)}>
+          <X size={15} />
+        </button>
+      </div>
     </article>
   );
 }
 
-interface PromptComposerProps {
+interface AssetPreviewProps {
+  asset: AssetReference;
+  label: string;
+}
+
+function AssetPreview({ asset, label }: AssetPreviewProps) {
+  if (asset.type === 'image') {
+    return <img alt={asset.localName} src={asset.previewUrl} />;
+  }
+
+  if (asset.type === 'video') {
+    return <video aria-label={asset.localName} muted preload="metadata" src={asset.previewUrl} />;
+  }
+
+  return (
+    <div className="audio-preview">
+      <Film size={18} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+interface ComposerPanelProps {
+  assets: AssetReference[];
   draft: WorkspaceState['draft'];
+  nativeReady: boolean;
   onClearDraft: () => void;
   onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
   onGenerate: () => void;
 }
 
-function PromptComposer({ draft, onClearDraft, onDraftField, onGenerate }: PromptComposerProps) {
+function ComposerPanel({
+  assets,
+  draft,
+  nativeReady,
+  onClearDraft,
+  onDraftField,
+  onGenerate
+}: ComposerPanelProps) {
   const defaultModel = getDefaultModelCapabilities();
   const selectableModels = Object.values(MODEL_CAPABILITIES).filter(
     (model) => model.submitMappingStatus === 'known'
   );
 
   return (
-    <section className="prompt-composer" aria-label="提示词编辑">
-      <PanelHeading icon={<Wand2 size={18} />} title="提示词" />
-      <label className="prompt-field">
+    <section className="workspace-panel composer-panel" aria-label="创作台">
+      <div className="composer-head">
+        <PanelHeading title="视频生成" meta="Seedance 2.0 Fast" icon={<Wand2 size={18} />} />
+        <span className="desktop-state" data-ready={nativeReady}>
+          {nativeReady ? '桌面端' : '预览'}
+        </span>
+      </div>
+
+      <PreviewStage assets={assets} />
+
+      <label className="prompt-box">
         <span>提示词</span>
         <textarea
           aria-label="提示词"
@@ -683,7 +736,8 @@ function PromptComposer({ draft, onClearDraft, onDraftField, onGenerate }: Promp
           placeholder="写下画面、人物、动作、镜头和风格"
         />
       </label>
-      <div className="control-matrix">
+
+      <div className="control-grid">
         <label>
           <span>模型</span>
           <select aria-label="模型" name="model" value={draft.model} onChange={onDraftField}>
@@ -705,8 +759,8 @@ function PromptComposer({ draft, onClearDraft, onDraftField, onGenerate }: Promp
           </select>
         </label>
         <label>
-          <span>分辨率</span>
-          <select aria-label="分辨率" name="resolution" value={draft.resolution} onChange={onDraftField}>
+          <span>清晰度</span>
+          <select aria-label="清晰度" name="resolution" value={draft.resolution} onChange={onDraftField}>
             {defaultModel.supportedResolutions.map((resolution) => (
               <option key={resolution} value={resolution}>
                 {resolution}
@@ -714,73 +768,121 @@ function PromptComposer({ draft, onClearDraft, onDraftField, onGenerate }: Promp
             ))}
           </select>
         </label>
+        <label>
+          <span>画幅</span>
+          <select aria-label="画幅" name="ratio" value={draft.ratio} onChange={onDraftField}>
+            {defaultModel.supportedRatios.map((ratio) => (
+              <option key={ratio} value={ratio}>
+                {ratio === 'adaptive' ? '自适应' : ratio}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
       <div className="generate-bar">
         <button className="ghost-button" type="button" onClick={onClearDraft}>
           <Trash2 size={16} />
           清空
         </button>
         <button className="primary-button" type="button" onClick={onGenerate}>
-          <span>生成</span>
-          <i>
-            <ChevronRight size={18} />
-          </i>
+          <Film size={18} />
+          生成
         </button>
       </div>
     </section>
   );
 }
 
-interface QueueDockProps {
-  state: WorkspaceState;
+interface PreviewStageProps {
+  assets: AssetReference[];
 }
 
-function QueueDock({ state }: QueueDockProps) {
-  const accountNames = useMemo(
-    () => new Map(state.accounts.map((account) => [account.id, account.name])),
-    [state.accounts]
-  );
-  const completedTasks = state.tasks.filter((task) => task.status === 'done');
+function PreviewStage({ assets }: PreviewStageProps) {
+  const leadAsset = assets.find((asset) => asset.type === 'image' || asset.type === 'video') ?? null;
 
   return (
-    <aside className="queue-dock" aria-label="任务区">
-      <section className="dock-panel">
-        <PanelHeading icon={<Clock3 size={18} />} title="生成队列" meta={String(state.tasks.length)} />
-        {state.tasks.length === 0 ? (
-          <div className="empty-state">生成后显示进度</div>
-        ) : (
-          <div className="task-list">
-            {state.tasks.map((task) => (
+    <section className="preview-stage" aria-label="预览">
+      {leadAsset ? <AssetPreview asset={leadAsset} label="预览" /> : <div className="preview-empty">等待素材</div>}
+      {assets.length > 1 ? <span className="preview-count">+{assets.length - 1}</span> : null}
+    </section>
+  );
+}
+
+interface QueuePanelProps {
+  accounts: WorkspaceState['accounts'];
+  onClearWorkspace: () => void;
+  onOpenVideo: (task: WorkspaceState['tasks'][number]) => void;
+  onRemoveTask: (taskId: string) => void;
+  tasks: WorkspaceState['tasks'];
+}
+
+function QueuePanel({
+  accounts,
+  onClearWorkspace,
+  onOpenVideo,
+  onRemoveTask,
+  tasks
+}: QueuePanelProps) {
+  const accountNames = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account.name])),
+    [accounts]
+  );
+  const activeTasks = tasks.filter((task) => task.status !== 'done');
+  const completedTasks = tasks.filter((task) => task.status === 'done');
+
+  return (
+    <aside className="workspace-panel queue-panel" aria-label="任务区">
+      <section className="queue-section">
+        <PanelHeading icon={<Clock3 size={18} />} title="队列" meta={String(activeTasks.length)} />
+        <div className="task-list">
+          {activeTasks.length === 0 ? (
+            <div className="empty-state">生成后显示进度</div>
+          ) : (
+            activeTasks.map((task) => (
               <TaskItem
                 accountName={accountNames.get(task.accountId) ?? '本地账号'}
                 key={task.id}
+                onOpenVideo={onOpenVideo}
+                onRemoveTask={onRemoveTask}
                 task={task}
               />
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="dock-panel">
-        <PanelHeading icon={<Database size={18} />} title="生成历史" meta={String(completedTasks.length)} />
-        {completedTasks.length === 0 ? (
-          <div className="empty-state">完成后自动保存</div>
-        ) : (
-          <div className="history-list">
-            {completedTasks.map((task) => (
-              <a className="history-item" href={task.videoUrl ?? '#'} key={task.id}>
-                <span>{task.prompt}</span>
-                <strong>{task.resolution}</strong>
-              </a>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="dock-panel compact">
-        <PanelHeading icon={<Settings size={18} />} title="本机缓存" />
-        <div className="cache-line">
-          <span>草稿和历史保存在本机</span>
-          <strong>{state.draft.assets.length} 个素材</strong>
+            ))
+          )}
         </div>
+      </section>
+
+      <section className="queue-section history-section">
+        <PanelHeading icon={<Database size={18} />} title="历史" meta={String(completedTasks.length)} />
+        <div className="history-list">
+          {completedTasks.length === 0 ? (
+            <div className="empty-state">完成后自动保存</div>
+          ) : (
+            completedTasks.map((task) => (
+              <button
+                className="history-item"
+                disabled={!task.localVideoPath && !task.videoUrl}
+                key={task.id}
+                onClick={() => onOpenVideo(task)}
+                type="button"
+              >
+                <span>{task.prompt || task.finalPrompt}</span>
+                <strong>{task.resolution}</strong>
+              </button>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="cache-section" aria-label="缓存">
+        <div>
+          <strong>本机缓存</strong>
+          <span>{tasks.length} 个任务</span>
+        </div>
+        <button className="small-button danger" type="button" onClick={onClearWorkspace}>
+          <Trash2 size={15} />
+          清除
+        </button>
       </section>
     </aside>
   );
@@ -788,32 +890,86 @@ function QueueDock({ state }: QueueDockProps) {
 
 interface TaskItemProps {
   accountName: string;
+  onOpenVideo: (task: WorkspaceState['tasks'][number]) => void;
+  onRemoveTask: (taskId: string) => void;
   task: WorkspaceState['tasks'][number];
 }
 
-function TaskItem({ accountName, task }: TaskItemProps) {
+function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProps) {
+  const canOpen = Boolean(task.localVideoPath || task.videoUrl);
+
   return (
-    <article className="task-item">
-      <div className="task-header">
-        <strong>{task.prompt}</strong>
-        <span>{accountName}</span>
+    <article className="task-item" data-status={task.status}>
+      <div className="task-title">
+        <strong>{task.prompt || task.finalPrompt}</strong>
+        <StatusIcon status={task.status} />
       </div>
       <div className="task-meta">
         <span>{getStatusText(task.status)}</span>
+        <span>{accountName}</span>
         <span>{formatDurationLabel(task.duration)}</span>
         <span>{task.resolution}</span>
       </div>
-      <div className="progress-track" aria-label="生成进度">
+      <div
+        className="progress-track"
+        aria-label="生成进度"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={task.progress}
+        role="progressbar"
+      >
         <div className="progress-fill" style={{ width: `${task.progress}%` }} />
       </div>
-      <div className="eta-line">{task.etaSeconds === null ? '估算中' : `约 ${task.etaSeconds} 秒`}</div>
-      <div className="task-actions">
-        <button type="button">打开</button>
-        <button type="button">重试</button>
-        <button type="button">删除</button>
+      <div className="task-bottom">
+        <span>{task.etaSeconds === null ? '估算中' : `约 ${task.etaSeconds} 秒`}</span>
+        <div className="task-actions">
+          <button disabled={!canOpen} onClick={() => onOpenVideo(task)} type="button">
+            <FolderOpen size={14} />
+            打开
+          </button>
+          <button aria-label="删除任务" className="icon-button" onClick={() => onRemoveTask(task.id)} type="button">
+            <X size={14} />
+          </button>
+        </div>
       </div>
+      {task.errorMessage ? (
+        <div className="task-error">
+          <AlertCircle size={15} />
+          {task.errorMessage}
+        </div>
+      ) : null}
     </article>
   );
+}
+
+interface PanelHeadingProps {
+  icon: ReactNode;
+  meta?: string;
+  title: string;
+}
+
+function PanelHeading({ icon, meta, title }: PanelHeadingProps) {
+  return (
+    <div className="panel-heading">
+      <div>
+        {icon}
+        <h2>{title}</h2>
+      </div>
+      {meta ? <span>{meta}</span> : null}
+    </div>
+  );
+}
+
+function StatusIcon({ status }: { status: WorkspaceState['tasks'][number]['status'] }) {
+  if (status === 'done') {
+    return <CheckCircle2 aria-label="已完成" size={17} />;
+  }
+
+  if (status === 'failed' || status === 'expired' || status === 'not_found') {
+    return <AlertCircle aria-label="失败" size={17} />;
+  }
+
+  return <Activity aria-label="生成中" size={17} />;
 }
 
 async function createAssetReference(file: File, index: number): Promise<AssetReference> {
@@ -825,7 +981,7 @@ async function createAssetReference(file: File, index: number): Promise<AssetRef
     type,
     label: '',
     localName: file.name,
-    previewUrl: type === 'image' ? dataUrl : URL.createObjectURL(file),
+    previewUrl: dataUrl,
     dataUrl,
     mimeType: file.type,
     uploadStatus: 'local'
@@ -868,18 +1024,12 @@ function getAssetLabelPrefix(type: AssetReference['type'], index: number): strin
 }
 
 function formatOrder(order: number): string {
-  const numerals = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const numerals = ['一', '二', '三', '四', '五', '六', '七', '八'];
   return numerals[order - 1] ?? String(order);
 }
 
 function formatDurationLabel(duration: string): string {
-  const normalized = duration.replace(/s$/u, ' 秒');
-
-  if (duration.startsWith('～')) {
-    return `约 ${normalized.slice(1)}`;
-  }
-
-  return normalized;
+  return `${duration.replace(/s$/u, '')} 秒`;
 }
 
 function getStatusText(status: WorkspaceState['tasks'][number]['status']): string {
@@ -898,35 +1048,23 @@ function getStatusText(status: WorkspaceState['tasks'][number]['status']): strin
 }
 
 function loadTheme(storage: StorageLike): ThemeMode {
-  return storage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+  return storage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
 }
 
-function advanceTasks(state: WorkspaceState): WorkspaceState {
+function markTaskFailed(state: WorkspaceState, taskId: string, message: string): WorkspaceState {
   return {
     ...state,
-    tasks: state.tasks.map((task) => {
-      if (task.status === 'done' || task.status === 'failed') {
-        return task;
-      }
-
-      const nextProgress = Math.min(task.progress + 18, 100);
-      const nextStatus = nextProgress >= 100 ? 'done' : nextProgress >= 64 ? 'generating' : 'processing';
-
-      return {
-        ...task,
-        progress: nextProgress,
-        status: nextStatus,
-        etaSeconds: nextStatus === 'done' ? 0 : Math.max(8, 120 - nextProgress),
-        videoUrl:
-          nextStatus === 'done'
-            ? `https://example.com/local-history/${encodeURIComponent(task.id)}.mp4`
-            : task.videoUrl,
-        localVideoPath:
-          nextStatus === 'done'
-            ? `~/Movies/YQhub/exports/${task.id}.mp4`
-            : task.localVideoPath,
-        updatedAt: new Date(0).toISOString()
-      };
-    })
+    tasks: state.tasks.map((task) =>
+      task.id === taskId
+        ? {
+            ...task,
+            status: 'failed',
+            progress: 0,
+            etaSeconds: 0,
+            errorMessage: message,
+            updatedAt: new Date(0).toISOString()
+          }
+        : task
+    )
   };
 }

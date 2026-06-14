@@ -10,12 +10,22 @@ const electronMock = vi.hoisted(() => {
     loadFile: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
+    webContents: {
+      getURL: ReturnType<typeof vi.fn>;
+      on: ReturnType<typeof vi.fn>;
+      setWindowOpenHandler: ReturnType<typeof vi.fn>;
+    };
   }> = [];
 
   class BrowserWindowMock {
     closedHandler: WindowHandler | null = null;
     loadFile = vi.fn(async () => undefined);
     loadURL = vi.fn(async () => undefined);
+    webContents = {
+      getURL: vi.fn(() => 'file:///app/index.html'),
+      on: vi.fn(),
+      setWindowOpenHandler: vi.fn()
+    };
     on = vi.fn((event: string, handler: WindowHandler) => {
       if (event === 'closed') {
         this.closedHandler = handler;
@@ -38,6 +48,7 @@ const electronMock = vi.hoisted(() => {
 
   return {
     app: {
+      getPath: vi.fn(() => '/Users/tester'),
       on: vi.fn(),
       quit: vi.fn(),
       whenReady: vi.fn(() => state.readyPromise)
@@ -51,6 +62,10 @@ const electronMock = vi.hoisted(() => {
       encryptString: vi.fn(() => Buffer.from('encrypted')),
       isEncryptionAvailable: vi.fn(() => true)
     },
+    shell: {
+      openExternal: vi.fn(async () => undefined),
+      openPath: vi.fn(async () => '')
+    },
     state,
     windows
   };
@@ -60,7 +75,8 @@ vi.mock('electron', () => ({
   app: electronMock.app,
   BrowserWindow: electronMock.BrowserWindowMock,
   ipcMain: electronMock.ipcMain,
-  safeStorage: electronMock.safeStorage
+  safeStorage: electronMock.safeStorage,
+  shell: electronMock.shell
 }));
 
 vi.mock('electron-store', () => ({
@@ -107,6 +123,32 @@ describe('Electron main process', () => {
     electronMock.windows[0].closedHandler?.();
 
     expect(main.getMainWindowForTest()).toBeNull();
+  });
+
+  it('opens generated local videos through the operating system', async () => {
+    await importMain();
+
+    const openHandler = electronMock.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === 'videos:open'
+    )?.[1];
+
+    expect(openHandler).toBeDefined();
+
+    await openHandler?.({}, '~/Movies/YQhub/result.mp4');
+
+    expect(electronMock.shell.openPath).toHaveBeenCalledWith('/Users/tester/Movies/YQhub/result.mp4');
+    expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('keeps external navigation out of the app window', async () => {
+    await importMain();
+    await Promise.resolve();
+
+    const handler = electronMock.windows[0].webContents.setWindowOpenHandler.mock.calls[0][0];
+    const result = handler({ url: 'https://example.com/generated/video.mp4' });
+
+    expect(result).toEqual({ action: 'deny' });
+    expect(electronMock.shell.openExternal).toHaveBeenCalledWith('https://example.com/generated/video.mp4');
   });
 });
 

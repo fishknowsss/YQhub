@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron';
 import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -11,7 +11,7 @@ import {
 import { createDownloadService } from '../src/main/services/downloadService';
 import { createQueueService } from '../src/main/services/queueService';
 import { createTaskService } from '../src/main/services/taskService';
-import { createRelayClient } from '../src/services/relayClient';
+import { createArkVideoClient } from '../src/services/arkVideoClient';
 
 interface MainStoreSchema {
   accounts: ApiAccount[];
@@ -30,15 +30,15 @@ const accountService = createAccountService({
   vault: createElectronSecretVault(store),
   initialAccounts: store.get('accounts') ?? []
 });
-const relayClient = createRelayClient();
+const videoClient = createArkVideoClient();
 const downloadService = createDownloadService();
 const queueService = createQueueService({
   accountService,
-  client: relayClient
+  client: videoClient
 });
 const taskService = createTaskService({
   accountService,
-  client: relayClient,
+  client: videoClient,
   downloadService
 });
 let mainWindow: BrowserWindow | null = null;
@@ -93,14 +93,15 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('tasks:submit', (_event, task) => queueService.submit(task));
   ipcMain.handle('tasks:refresh', (_event, task) => taskService.refreshTask(task));
+  ipcMain.handle('videos:open', (_event, target: string) => openVideoTarget(target));
 }
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 980,
-    minHeight: 680,
+    width: 1440,
+    height: 900,
+    minWidth: 1180,
+    minHeight: 760,
     title: 'YQhub',
     webPreferences: {
       contextIsolation: true,
@@ -112,6 +113,16 @@ async function createWindow(): Promise<void> {
   window.on('closed', () => {
     if (mainWindow === window) {
       mainWindow = null;
+    }
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    void openExternalTarget(url);
+    return { action: 'deny' };
+  });
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isAppUrl(url)) {
+      event.preventDefault();
+      void openExternalTarget(url);
     }
   });
 
@@ -149,4 +160,54 @@ app.on('window-all-closed', () => {
 
 export function getMainWindowForTest(): BrowserWindow | null {
   return mainWindow;
+}
+
+async function openVideoTarget(target: string): Promise<void> {
+  const trimmedTarget = target.trim();
+
+  if (!trimmedTarget) {
+    throw new Error('成片还没生成');
+  }
+
+  if (isHttpUrl(trimmedTarget)) {
+    await shell.openExternal(trimmedTarget);
+    return;
+  }
+
+  const localPath = normalizeLocalPath(trimmedTarget);
+  const errorMessage = await shell.openPath(localPath);
+
+  if (errorMessage) {
+    throw new Error(errorMessage);
+  }
+}
+
+async function openExternalTarget(target: string): Promise<void> {
+  if (isHttpUrl(target)) {
+    await shell.openExternal(target);
+  }
+}
+
+function normalizeLocalPath(target: string): string {
+  if (target.startsWith('file://')) {
+    return fileURLToPath(target);
+  }
+
+  if (target === '~' || target.startsWith('~/')) {
+    return path.join(app.getPath('home'), target.slice(2));
+  }
+
+  if (path.isAbsolute(target)) {
+    return target;
+  }
+
+  throw new Error('成片路径不正确');
+}
+
+function isAppUrl(url: string): boolean {
+  return url.startsWith('file://');
+}
+
+function isHttpUrl(url: string): boolean {
+  return url.startsWith('https://') || url.startsWith('http://');
 }

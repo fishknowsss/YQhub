@@ -6,6 +6,7 @@ export interface YqhubLocalApi {
   deleteAccount(accountId: string): Promise<void>;
   submitTask(task: GenerationTask): Promise<GenerationTask>;
   refreshTask(task: GenerationTask): Promise<GenerationTask>;
+  openVideo(target: string): Promise<void>;
 }
 
 declare global {

@@ -26,7 +26,6 @@ export interface ApiAccount {
   name: string;
   apiKeyPreview: string;
   apiKeyRef: string;
-  relayEndpoint: string;
   concurrencyLimit: number;
   enabled: boolean;
   createdAt: string;
@@ -36,7 +35,6 @@ export interface ApiAccount {
 export interface ApiAccountInput {
   name: string;
   apiKey: string;
-  relayEndpoint?: string;
   concurrencyLimit?: number;
 }
 
@@ -45,6 +43,7 @@ export interface DraftState {
   assets: AssetReference[];
   duration: string;
   resolution: string;
+  ratio: string;
   model: string;
 }
 
@@ -56,6 +55,7 @@ export interface GenerationTask {
   assets: AssetReference[];
   duration: string;
   resolution: string;
+  ratio: string;
   model: string;
   status: TaskStatus;
   progress: number;
@@ -76,26 +76,4 @@ export interface WorkspaceState {
   currentAccountId: string | null;
   draft: DraftState;
   tasks: GenerationTask[];
-}
-
-export interface SubmitVideoRequest {
-  accountId: string;
-  prompt: string;
-  assets: AssetReference[];
-  duration: string;
-  resolution: string;
-}
-
-export interface SubmitVideoResponse {
-  taskId: string;
-  status: TaskStatus;
-}
-
-export interface QueryVideoResponse {
-  taskId: string;
-  accountId: string;
-  status: TaskStatus;
-  progress: number;
-  etaSeconds: number | null;
-  videoUrl: string | null;
 }
