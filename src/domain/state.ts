@@ -18,7 +18,8 @@ export function createInitialDraft(): DraftState {
     duration: '15',
     resolution: '720p',
     ratio: '9:16',
-    model: DEFAULT_MODEL
+    model: DEFAULT_MODEL,
+    outputName: ''
   };
 }
 
@@ -35,6 +36,7 @@ export function createInitialState(): WorkspaceState {
 export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): WorkspaceState {
   assertXiaoyunqueApiKey(input.apiKey);
 
+  const now = new Date().toISOString();
   const account: ApiAccount = {
     id: `account-${state.accounts.length + 1}`,
     name: input.name.trim() || '未命名账号',
@@ -42,8 +44,8 @@ export function addApiAccount(state: WorkspaceState, input: ApiAccountInput): Wo
     apiKeyRef: createKeyReference(input),
     concurrencyLimit: input.concurrencyLimit ?? 1,
     enabled: true,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   return {
@@ -99,7 +101,7 @@ export function createGenerationTask(state: WorkspaceState): WorkspaceState {
     throw new Error('请先添加 API 账号');
   }
 
-  const now = new Date(0).toISOString();
+  const now = new Date().toISOString();
   const task: GenerationTask = {
     id: `local-task-${state.tasks.length + 1}`,
     accountId: state.currentAccountId,
@@ -110,6 +112,7 @@ export function createGenerationTask(state: WorkspaceState): WorkspaceState {
     resolution: state.draft.resolution,
     ratio: state.draft.ratio,
     model: state.draft.model,
+    outputName: state.draft.outputName.trim(),
     status: 'in_queue',
     progress: 10,
     etaSeconds: null,

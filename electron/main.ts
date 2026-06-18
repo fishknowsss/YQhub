@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron';
 import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -102,6 +102,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('videos:open', (_event, target: string) => openVideoTarget(target));
   ipcMain.handle('settings:getExportDirectory', async () => getExportDirectory());
   ipcMain.handle('settings:chooseExportDirectory', () => chooseExportDirectory());
+  ipcMain.handle('edit:showContextMenu', () => showEditContextMenu());
 }
 
 async function createWindow(): Promise<void> {
@@ -226,6 +227,20 @@ async function openExternalTarget(target: string): Promise<void> {
   if (isHttpUrl(target)) {
     await shell.openExternal(target);
   }
+}
+
+function showEditContextMenu(): void {
+  const menu = Menu.buildFromTemplate([
+    { label: '剪切', role: 'cut' },
+    { label: '复制', role: 'copy' },
+    { label: '粘贴', role: 'paste' },
+    { type: 'separator' },
+    { label: '全选', role: 'selectAll' }
+  ]);
+
+  menu.popup({
+    window: mainWindow ?? undefined
+  });
 }
 
 function normalizeLocalPath(target: string): string {

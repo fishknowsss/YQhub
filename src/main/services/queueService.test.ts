@@ -28,6 +28,7 @@ describe('queue service', () => {
     };
     const queue = createQueueService({ accountService, client });
     const task = createTaskForAccount(firstAccount.id);
+    const beforeSubmit = Date.now() - 1000;
 
     const submitted = await queue.submit(task, secondAccount.id);
 
@@ -36,6 +37,7 @@ describe('queue service', () => {
       apiTaskId: 'remote-task-1',
       requestId: 'request-1'
     });
+    expect(Date.parse(submitted.updatedAt)).toBeGreaterThanOrEqual(beforeSubmit);
     expect(calls).toEqual([`${firstAccount.id}:ak-xiaoUserKey1234567890`]);
   });
 });
@@ -62,6 +64,7 @@ function createTaskForAccount(accountId: string): GenerationTask {
     resolution: '720p',
     ratio: '16:9',
     model: 'seedance2.0fast',
+    outputName: '茶饮短片',
     status: 'in_queue',
     progress: 10,
     etaSeconds: null,

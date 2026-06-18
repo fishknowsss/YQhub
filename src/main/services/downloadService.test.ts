@@ -3,13 +3,13 @@ import path from 'node:path';
 import { createDownloadService } from './downloadService';
 
 describe('download service', () => {
-  it('downloads a generated video into the local Downloads path by default', async () => {
+  it('downloads a generated video with a readable default file name', async () => {
     const writes: Array<{ path: string; bytes: Uint8Array }> = [];
     const expectedPath = path.join(
       '/Users/tester',
       'Downloads',
       '2026-06-13',
-      'remote-task-1.mp4'
+      'YQhub-20260613-0910-生成一条茶饮短片-产品在桌面旋转.mp4'
     );
     const service = createDownloadService({
       homeDir: '/Users/tester',
@@ -26,7 +26,8 @@ describe('download service', () => {
     await expect(
       service.downloadGeneratedVideo({
         taskId: 'remote-task-1',
-        videoUrl: 'https://cdn.example.com/result.mp4'
+        videoUrl: 'https://cdn.example.com/result.mp4',
+        prompt: '生成一条茶饮短片，产品在桌面旋转'
       })
     ).resolves.toBe(expectedPath);
     expect(writes).toEqual([
@@ -51,12 +52,36 @@ describe('download service', () => {
     await expect(
       service.downloadGeneratedVideo({
         taskId: 'remote-task-9',
-        videoUrl: 'https://cdn.example.com/vertical.mp4'
+        videoUrl: 'https://cdn.example.com/vertical.mp4',
+        outputName: '茶饮上市-竖版开场',
+        prompt: '生成一条茶饮短片'
       })
-    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '2026-06-13', 'remote-task-9.mp4'));
+    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '2026-06-13', '茶饮上市-竖版开场.mp4'));
     expect(writes[0]).toEqual({
-      path: path.join('/Volumes/Studio/YQhub', '2026-06-13', 'remote-task-9.mp4'),
+      path: path.join('/Volumes/Studio/YQhub', '2026-06-13', '茶饮上市-竖版开场.mp4'),
       bytes: new Uint8Array([4, 5, 6])
     });
+  });
+
+  it('sanitizes empty or unsafe names before writing', async () => {
+    const writes: Array<{ path: string; bytes: Uint8Array }> = [];
+    const service = createDownloadService({
+      homeDir: '/Users/tester',
+      now: () => new Date('2026-06-13T09:10:00.000Z'),
+      fetchBytes: async () => new Uint8Array([7, 8, 9]),
+      writeFile: async (path, bytes) => {
+        writes.push({ path, bytes });
+      }
+    });
+
+    await expect(
+      service.downloadGeneratedVideo({
+        taskId: 'skill_x7%/broken',
+        videoUrl: 'https://cdn.example.com/result.mp4',
+        outputName: '  ../  ',
+        prompt: ''
+      })
+    ).resolves.toBe(path.join('/Users/tester', 'Downloads', '2026-06-13', 'YQhub-20260613-0910.mp4'));
+    expect(writes[0].path).not.toContain('skill_x7');
   });
 });

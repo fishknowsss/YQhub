@@ -9,6 +9,7 @@ export interface YqhubLocalApi {
   openVideo(target: string): Promise<void>;
   getExportDirectory(): Promise<string>;
   chooseExportDirectory(): Promise<string>;
+  showEditContextMenu(): Promise<void>;
 }
 
 declare global {

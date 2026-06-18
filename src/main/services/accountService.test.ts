@@ -5,6 +5,7 @@ describe('account service', () => {
   it('keeps user API key in the local vault and exposes only account metadata', () => {
     const vault = createMemorySecretVault();
     const service = createAccountService({ vault });
+    const beforeCreate = Date.now() - 1000;
 
     const account = service.addAccount({
       name: '剪辑账号',
@@ -23,6 +24,8 @@ describe('account service', () => {
       accountId: account.id,
       apiKey: 'ak-localUserKey1234567890'
     });
+    expect(Date.parse(account.createdAt)).toBeGreaterThanOrEqual(beforeCreate);
+    expect(Date.parse(account.updatedAt)).toBeGreaterThanOrEqual(beforeCreate);
   });
 
   it('does not share secrets between different local vaults', () => {

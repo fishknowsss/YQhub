@@ -5,6 +5,8 @@ import path from 'node:path';
 export interface DownloadGeneratedVideoInput {
   taskId: string;
   videoUrl: string;
+  outputName?: string | null;
+  prompt?: string | null;
 }
 
 export interface DownloadService {
@@ -28,8 +30,13 @@ export function createDownloadService(options: CreateDownloadServiceOptions = {}
 
   return {
     async downloadGeneratedVideo(input) {
-      const dateSegment = now().toISOString().slice(0, 10);
-      const outputPath = path.join(resolveOutputDirectory(getHomeDir, outputDirectory), dateSegment, `${sanitizeFileName(input.taskId)}.mp4`);
+      const currentDate = now();
+      const dateSegment = currentDate.toISOString().slice(0, 10);
+      const outputPath = path.join(
+        resolveOutputDirectory(getHomeDir, outputDirectory),
+        dateSegment,
+        `${buildOutputFileBase(input, currentDate)}.mp4`
+      );
       const bytes = await fetchBytes(input.videoUrl);
       await writeFile(outputPath, bytes);
       return outputPath;
@@ -67,6 +74,41 @@ function resolveOutputDirectory(
   return path.join(homeDir, 'Downloads');
 }
 
-function sanitizeFileName(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, '-');
+function buildOutputFileBase(input: DownloadGeneratedVideoInput, date: Date): string {
+  const customName = sanitizeFileBase(input.outputName ?? '');
+
+  if (customName) {
+    return customName;
+  }
+
+  const promptName = sanitizeFileBase(input.prompt ?? '');
+  const timestamp = formatUtcTimestamp(date);
+  return promptName ? `YQhub-${timestamp}-${truncateFileBase(promptName, 42)}` : `YQhub-${timestamp}`;
+}
+
+function sanitizeFileBase(value: string): string {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/[\u0000-\u001f]+/g, '')
+    .replace(/[，,、。；;：:！!？?（）()[\]{}]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.\-\s]+|[.\-\s]+$/g, '');
+}
+
+function truncateFileBase(value: string, maxLength: number): string {
+  const characters = Array.from(value);
+
+  if (characters.length <= maxLength) {
+    return value;
+  }
+
+  return characters.slice(0, maxLength).join('').replace(/-+$/u, '');
+}
+
+function formatUtcTimestamp(date: Date): string {
+  const value = Number.isNaN(date.getTime()) ? new Date(0) : date;
+  const iso = value.toISOString();
+  return `${iso.slice(0, 10).replace(/-/g, '')}-${iso.slice(11, 16).replace(':', '')}`;
 }

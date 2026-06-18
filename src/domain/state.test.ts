@@ -15,7 +15,8 @@ describe('workspace state', () => {
       model: 'seedance2.0fast',
       duration: '15',
       resolution: '720p',
-      ratio: '9:16'
+      ratio: '9:16',
+      outputName: ''
     });
   });
 
@@ -38,7 +39,8 @@ describe('workspace state', () => {
       prompt: '生成一条茶饮短片',
       duration: '5s',
       resolution: '720p',
-      ratio: '16:9'
+      ratio: '16:9',
+      outputName: '茶饮上市-横版开场'
     });
     state = createGenerationTask(state);
 
@@ -57,7 +59,8 @@ describe('workspace state', () => {
       prompt: '生成一条茶饮短片',
       duration: '5s',
       resolution: '720p',
-      ratio: '16:9'
+      ratio: '16:9',
+      outputName: '茶饮上市-横版开场'
     });
     expect(state.tasks[1]).toMatchObject({
       accountId: yan.id,
@@ -69,6 +72,7 @@ describe('workspace state', () => {
   });
 
   it('stores only local key references on API accounts', () => {
+    const beforeCreate = Date.now() - 1000;
     const state = addApiAccount(createInitialState(), {
       name: '本地账号',
       apiKey: 'ak-localUserKey1234567890'
@@ -80,6 +84,8 @@ describe('workspace state', () => {
     });
     expect(state.accounts[0].apiKeyRef).toMatch(/^local-key:/);
     expect(JSON.stringify(state.accounts[0])).not.toContain('ak-localUserKey1234567890');
+    expect(Date.parse(state.accounts[0].createdAt)).toBeGreaterThanOrEqual(beforeCreate);
+    expect(Date.parse(state.accounts[0].updatedAt)).toBeGreaterThanOrEqual(beforeCreate);
   });
 
   it('accepts only Xiaoyunque-style ak API keys', () => {
@@ -149,5 +155,21 @@ describe('workspace state', () => {
     state = createGenerationTask(state);
 
     expect(state.tasks[0].finalPrompt).toBe('保持人物关系清楚，镜头干净\n\n图一是萧衍\n图二是言笑');
+  });
+
+  it('timestamps generation tasks with the current time', () => {
+    let state = addApiAccount(createInitialState(), {
+      name: '本地账号',
+      apiKey: 'ak-localUserKey1234567890'
+    });
+    const beforeCreate = Date.now() - 1000;
+
+    state = updateDraft(state, {
+      prompt: '生成一条新品视频'
+    });
+    state = createGenerationTask(state);
+
+    expect(Date.parse(state.tasks[0].createdAt)).toBeGreaterThanOrEqual(beforeCreate);
+    expect(Date.parse(state.tasks[0].updatedAt)).toBeGreaterThanOrEqual(beforeCreate);
   });
 });

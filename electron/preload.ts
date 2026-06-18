@@ -10,6 +10,7 @@ export interface YqhubLocalApi {
   openVideo(target: string): Promise<void>;
   getExportDirectory(): Promise<string>;
   chooseExportDirectory(): Promise<string>;
+  showEditContextMenu(): Promise<void>;
 }
 
 const api: YqhubLocalApi = {
@@ -20,7 +21,8 @@ const api: YqhubLocalApi = {
   refreshTask: (task) => ipcRenderer.invoke('tasks:refresh', task),
   openVideo: (target) => ipcRenderer.invoke('videos:open', target),
   getExportDirectory: () => ipcRenderer.invoke('settings:getExportDirectory'),
-  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory')
+  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory'),
+  showEditContextMenu: () => ipcRenderer.invoke('edit:showContextMenu')
 };
 
 contextBridge.exposeInMainWorld('yqhub', api);

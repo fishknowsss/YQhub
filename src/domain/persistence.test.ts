@@ -14,7 +14,8 @@ describe('workspace persistence', () => {
       prompt: '一支干净利落的产品视频',
       duration: '10',
       resolution: '480p',
-      ratio: '9:16'
+      ratio: '9:16',
+      outputName: '新品首发'
     });
 
     saveWorkspaceState(storage, state);
@@ -27,7 +28,8 @@ describe('workspace persistence', () => {
         prompt: '一支干净利落的产品视频',
         duration: '10',
         resolution: '480p',
-        ratio: '9:16'
+        ratio: '9:16',
+        outputName: '新品首发'
       }
     });
   });
@@ -92,7 +94,60 @@ describe('workspace persistence', () => {
     expect(loadWorkspaceState(storage).draft).toMatchObject({
       prompt: '',
       assets: [],
-      model: 'seedance2.0fast'
+      model: 'seedance2.0fast',
+      outputName: ''
+    });
+  });
+
+  it('fills missing output names from older cached workspaces', () => {
+    const storage = createMemoryStorage();
+    const staleState = {
+      ...createInitialState(),
+      draft: {
+        prompt: '旧缓存提示词',
+        assets: [],
+        duration: '15',
+        resolution: '720p',
+        ratio: '9:16',
+        model: 'seedance2.0fast'
+      },
+      tasks: [
+        {
+          id: 'local-task-1',
+          accountId: 'account-1',
+          prompt: '生成一条茶饮短片',
+          finalPrompt: '生成一条茶饮短片',
+          assets: [],
+          duration: '5',
+          resolution: '720p',
+          ratio: '16:9',
+          model: 'seedance2.0fast',
+          status: 'done' as const,
+          progress: 100,
+          etaSeconds: 0,
+          apiTaskId: 'remote-task-1',
+          videoUrl: null,
+          localVideoPath: '/Users/tester/Movies/YQhub/result.mp4',
+          errorCode: null,
+          errorMessage: null,
+          requestId: 'request-1',
+          createdAt: '2026-06-13T00:00:00.000Z',
+          updatedAt: '2026-06-13T00:00:00.000Z'
+        }
+      ]
+    };
+
+    storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(staleState));
+
+    expect(loadWorkspaceState(storage)).toMatchObject({
+      draft: {
+        outputName: ''
+      },
+      tasks: [
+        {
+          outputName: '生成一条茶饮短片'
+        }
+      ]
     });
   });
 
@@ -117,6 +172,7 @@ describe('workspace persistence', () => {
           apiTaskId: 'remote-task-1',
           videoUrl: 'https://example.com/generated/remote-task-1.mp4',
           localVideoPath: '~/Movies/YQhub/exports/local-task-1.mp4',
+          outputName: '生成一条茶饮短片',
           errorCode: null,
           errorMessage: null,
           requestId: 'request-1',

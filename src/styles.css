@@ -729,7 +729,7 @@ textarea::placeholder {
 
 .control-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.72fr) minmax(0, 0.88fr) minmax(0, 0.82fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.66fr) minmax(0, 0.76fr) minmax(0, 0.72fr) minmax(0, 1.1fr);
   gap: 8px;
   min-width: 0;
 }
@@ -771,9 +771,9 @@ textarea::placeholder {
   position: relative;
   display: grid;
   width: auto;
-  max-width: min(100%, 298px);
+  max-width: min(100%, 560px);
   height: min(100%, 530px);
-  aspect-ratio: 9 / 16;
+  aspect-ratio: var(--preview-aspect, 9 / 16);
   place-self: center;
   place-items: center;
   overflow: hidden;
@@ -1083,6 +1083,7 @@ textarea::placeholder {
 }
 
 .history-thumb-button video {
+  display: block;
   width: 100%;
   height: 118px;
   object-fit: contain;
@@ -1208,7 +1209,7 @@ textarea::placeholder {
 
   .preview-stage {
     width: auto;
-    max-width: min(100%, 286px);
+    max-width: min(100%, 540px);
     height: min(100%, 508px);
   }
 

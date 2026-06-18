@@ -20,6 +20,7 @@ import {
 import {
   ChangeEvent,
   ClipboardEvent,
+  CSSProperties,
   DragEvent,
   FormEvent,
   KeyboardEvent,
@@ -263,7 +264,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, [nativeApi]);
 
   const handleDraftField = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => {
+    (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>) => {
       const { name, value } = event.target;
       setState((current) => updateDraft(current, { [name]: value }));
     },
@@ -396,7 +397,8 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         duration: task.duration,
         resolution: task.resolution,
         ratio: task.ratio,
-        model: task.model
+        model: task.model,
+        outputName: ''
       })
     );
     setNotice('已复用');
@@ -435,9 +437,12 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   );
 
   const handleDrop = useCallback(
-    (event: DragEvent<HTMLLabelElement>) => {
+    (event: DragEvent<HTMLElement>) => {
       event.preventDefault();
-      handleFiles(event.dataTransfer.files);
+      event.stopPropagation();
+      if (event.dataTransfer.files.length > 0) {
+        handleFiles(event.dataTransfer.files);
+      }
     },
     [handleFiles]
   );
@@ -449,6 +454,18 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       }
     },
     [handleFiles]
+  );
+
+  const handlePromptContextMenu = useCallback(
+    (event: MouseEvent<HTMLTextAreaElement>) => {
+      if (!nativeApi?.showEditContextMenu) {
+        return;
+      }
+
+      event.preventDefault();
+      void nativeApi.showEditContextMenu();
+    },
+    [nativeApi]
   );
 
   const handleFileInput = useCallback(
@@ -509,7 +526,11 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
             onPreviewAsset={handlePreviewAsset}
             onRemoveAsset={handleRemoveAsset}
           />
-          <PromptPanel draft={state.draft} onDraftField={handleDraftField} />
+          <PromptPanel
+            draft={state.draft}
+            onDraftField={handleDraftField}
+            onPromptContextMenu={handlePromptContextMenu}
+          />
           <ModelControls draft={state.draft} onDraftField={handleDraftField} />
           <div className="generate-bar">
             <button className="ghost-button" type="button" onClick={handleClearDraft}>
@@ -665,7 +686,7 @@ interface AssetPanelProps {
   assets: AssetReference[];
   maxAssets: number;
   onAssetLabel: (assetId: string, label: string) => void;
-  onDrop: (event: DragEvent<HTMLLabelElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onPreviewAsset: (asset: AssetReference) => void;
   onRemoveAsset: (assetId: string) => void;
@@ -683,7 +704,12 @@ function AssetPanel({
   const hasAssets = assets.length > 0;
 
   return (
-    <section className={`workspace-panel asset-panel${hasAssets ? ' has-assets' : ''}`} aria-label="参考素材">
+    <section
+      className={`workspace-panel asset-panel${hasAssets ? ' has-assets' : ''}`}
+      aria-label="参考素材"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={onDrop}
+    >
       <PanelHeading title="参考素材" meta={`${assets.length}/${maxAssets}`} icon={<ImagePlus size={18} />} />
       <AssetDropzone compact={hasAssets} onDrop={onDrop} onFileInput={onFileInput} />
       <div className="asset-list" aria-label="参考素材列表">
@@ -708,7 +734,7 @@ function AssetPanel({
 
 interface AssetDropzoneProps {
   compact: boolean;
-  onDrop: (event: DragEvent<HTMLLabelElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -839,10 +865,11 @@ function AssetPreview({ asset, label }: AssetPreviewProps) {
 
 interface PromptPanelProps {
   draft: WorkspaceState['draft'];
-  onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
+  onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>) => void;
+  onPromptContextMenu: (event: MouseEvent<HTMLTextAreaElement>) => void;
 }
 
-function PromptPanel({ draft, onDraftField }: PromptPanelProps) {
+function PromptPanel({ draft, onDraftField, onPromptContextMenu }: PromptPanelProps) {
   return (
     <section className="workspace-panel prompt-panel" aria-label="提示词区域">
       <label className="prompt-box">
@@ -852,6 +879,7 @@ function PromptPanel({ draft, onDraftField }: PromptPanelProps) {
           name="prompt"
           value={draft.prompt}
           onChange={onDraftField}
+          onContextMenu={onPromptContextMenu}
           placeholder="写下画面、人物、动作、镜头和风格"
         />
       </label>
@@ -861,7 +889,7 @@ function PromptPanel({ draft, onDraftField }: PromptPanelProps) {
 
 interface ModelControlsProps {
   draft: WorkspaceState['draft'];
-  onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => void;
+  onDraftField: (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>) => void;
 }
 
 function ModelControls({ draft, onDraftField }: ModelControlsProps) {
@@ -912,6 +940,16 @@ function ModelControls({ draft, onDraftField }: ModelControlsProps) {
           ))}
         </select>
       </label>
+      <label className="output-name-field">
+        <span>文件名</span>
+        <input
+          aria-label="文件名"
+          name="outputName"
+          value={draft.outputName}
+          onChange={onDraftField}
+          placeholder="自动命名"
+        />
+      </label>
     </section>
   );
 }
@@ -927,18 +965,19 @@ function PreviewPanel({ task }: { task: GenerationTask | null }) {
 
 function PreviewStage({ task }: { task: GenerationTask | null }) {
   const src = task ? getPlayableVideoSource(task.localVideoPath ?? task.videoUrl) : null;
+  const previewStyle = getPreviewAspectStyle(task?.ratio);
 
   if (task?.status === 'done' && src) {
     return (
-      <div className="preview-stage">
-        <LocalVideoPlayer src={src} />
+      <div className="preview-stage" style={previewStyle}>
+        <LocalVideoPlayer key={src} src={src} />
       </div>
     );
   }
 
   if (task) {
     return (
-      <div className="preview-stage progress-preview">
+      <div className="preview-stage progress-preview" style={previewStyle}>
         <div className="preview-progress-card">
           <StatusIcon status={task.status} />
           <strong>{getStatusText(task.status)}</strong>
@@ -1222,11 +1261,17 @@ function HistoryItem({
   onReuseTask,
   task
 }: HistoryItemProps) {
-  const title = task.prompt || task.finalPrompt || '未命名视频';
+  const title = getTaskTitle(task);
 
   return (
     <article className="history-card">
-      <button className="history-thumb-button" type="button" onClick={() => onPlayTask(task)} aria-label="播放视频">
+      <button
+        className="history-thumb-button"
+        style={getPreviewAspectStyle(task.ratio)}
+        type="button"
+        onClick={() => onPlayTask(task)}
+        aria-label="播放视频"
+      >
         <HistoryThumbnail task={task} />
       </button>
       <button className="history-title-button" type="button" onClick={() => onOpenVideo(task)}>
@@ -1259,13 +1304,41 @@ function HistoryThumbnail({ task }: { task: GenerationTask }) {
   const src = getPlayableVideoSource(task.localVideoPath ?? task.videoUrl);
 
   if (src) {
-    return <video aria-hidden muted preload="metadata" src={src} />;
+    return <VideoThumbnail src={src} />;
   }
 
   return (
     <div className="history-thumb-placeholder">
       <Film size={20} />
     </div>
+  );
+}
+
+function VideoThumbnail({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const handleLoadedMetadata = useCallback(() => {
+    const video = videoRef.current;
+
+    if (!video || video.readyState < 1) {
+      return;
+    }
+
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      video.currentTime = Math.min(0.1, video.duration / 2);
+    }
+  }, []);
+
+  return (
+    <video
+      aria-hidden
+      muted
+      onLoadedMetadata={handleLoadedMetadata}
+      playsInline
+      preload="metadata"
+      ref={videoRef}
+      src={src}
+    />
   );
 }
 
@@ -1278,7 +1351,7 @@ interface TaskItemProps {
 
 function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProps) {
   const canOpen = Boolean(task.localVideoPath || task.videoUrl);
-  const title = task.prompt || task.finalPrompt || '生成任务';
+  const title = getTaskTitle(task);
   const compactTitle = truncateText(title, CURRENT_TASK_TITLE_LIMIT);
 
   return (
@@ -1445,6 +1518,10 @@ function formatDateLabel(value: string): string {
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function getTaskTitle(task: GenerationTask): string {
+  return task.prompt || task.outputName || task.finalPrompt || '未命名视频';
+}
+
 function getStatusText(status: GenerationTask['status']): string {
   const statusMap: Record<GenerationTask['status'], string> = {
     draft: '草稿',
@@ -1460,6 +1537,29 @@ function getStatusText(status: GenerationTask['status']): string {
   return statusMap[status];
 }
 
+function getPreviewAspectStyle(ratio: string | undefined): CSSProperties {
+  return {
+    '--preview-aspect': getPreviewAspectValue(ratio)
+  } as CSSProperties;
+}
+
+function getPreviewAspectValue(ratio: string | undefined): string {
+  const match = ratio?.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/u);
+
+  if (!match) {
+    return '9 / 16';
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return '9 / 16';
+  }
+
+  return `${width} / ${height}`;
+}
+
 function getPlayableVideoSource(target: string | null): string | null {
   if (!target) {
     return null;
@@ -1469,11 +1569,30 @@ function getPlayableVideoSource(target: string | null): string | null {
     return target;
   }
 
+  if (isWindowsAbsolutePath(target)) {
+    return windowsPathToFileUrl(target);
+  }
+
   if (target.startsWith('/')) {
-    return `file://${target.split('/').map(encodeURIComponent).join('/')}`;
+    return `file://${encodePathSegments(target)}`;
   }
 
   return null;
+}
+
+function isWindowsAbsolutePath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/u.test(value);
+}
+
+function windowsPathToFileUrl(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  const drive = normalized.slice(0, 2);
+  const rest = normalized.slice(2).split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return rest ? `file:///${drive}/${rest}` : `file:///${drive}/`;
+}
+
+function encodePathSegments(value: string): string {
+  return value.split('/').map(encodeURIComponent).join('/');
 }
 
 function markTaskFailed(state: WorkspaceState, taskId: string, message: string): WorkspaceState {
@@ -1486,7 +1605,7 @@ function markTaskFailed(state: WorkspaceState, taskId: string, message: string):
             status: 'failed',
             progress: 0,
             errorMessage: message,
-            updatedAt: new Date(0).toISOString()
+            updatedAt: new Date().toISOString()
           }
         : task
     )

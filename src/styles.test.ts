@@ -18,7 +18,8 @@ describe('layout CSS', () => {
 
     expect(previewStage).toContain('width: auto');
     expect(previewStage).toContain('height: min(100%, 530px)');
-    expect(previewStage).toContain('max-width: min(100%, 298px)');
+    expect(previewStage).toContain('max-width: min(100%, 560px)');
+    expect(previewStage).toContain('aspect-ratio: var(--preview-aspect, 9 / 16)');
     expect(previewColumn).toContain('minmax(184px, 230px)');
     expect(currentTaskPanel).toContain('min-height: 184px');
     expect(currentTaskPanel).not.toContain('max-height: 156px');

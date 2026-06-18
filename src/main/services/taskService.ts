@@ -77,7 +77,7 @@ export function createTaskService({
         errorCode: result.errorCode ?? task.errorCode,
         errorMessage: result.errorMessage || task.errorMessage,
         requestId: result.requestId,
-        updatedAt: new Date(0).toISOString()
+        updatedAt: new Date().toISOString()
       };
 
       if (status === 'done' && result.videoUrl) {
@@ -85,7 +85,9 @@ export function createTaskService({
           ...nextTask,
           localVideoPath: await downloadService.downloadGeneratedVideo({
             taskId: task.apiTaskId,
-            videoUrl: result.videoUrl
+            videoUrl: result.videoUrl,
+            outputName: task.outputName,
+            prompt: task.prompt || task.finalPrompt
           })
         };
       }

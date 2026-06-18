@@ -47,7 +47,7 @@ export function createQueueService({
         apiTaskId: result.apiTaskId,
         requestId: result.requestId,
         status: result.status,
-        updatedAt: new Date(0).toISOString()
+        updatedAt: new Date().toISOString()
       };
     }
   };

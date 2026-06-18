@@ -25,7 +25,6 @@ export interface CreateAccountServiceOptions {
   initialAccounts?: ApiAccount[];
 }
 
-const FIXED_TIME = '2026-06-13T00:00:00.000Z';
 let vaultSequence = 0;
 
 export function createAccountService({
@@ -38,6 +37,7 @@ export function createAccountService({
     addAccount(input) {
       assertXiaoyunqueApiKey(input.apiKey);
 
+      const now = new Date().toISOString();
       const account: ApiAccount = {
         id: `account-${accounts.length + 1}`,
         name: input.name.trim() || '未命名账号',
@@ -45,8 +45,8 @@ export function createAccountService({
         apiKeyRef: vault.writeSecret(input.apiKey.trim()),
         concurrencyLimit: input.concurrencyLimit ?? 1,
         enabled: true,
-        createdAt: FIXED_TIME,
-        updatedAt: FIXED_TIME
+        createdAt: now,
+        updatedAt: now
       };
 
       accounts = [...accounts, account];

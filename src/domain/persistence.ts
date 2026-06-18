@@ -111,6 +111,7 @@ function normalizeWorkspaceState(state: WorkspaceState): WorkspaceState {
       prompt: state.draft.prompt ?? '',
       assets: Array.isArray(state.draft.assets) ? state.draft.assets : [],
       model: normalizedModel,
+      outputName: state.draft.outputName ?? '',
       duration: durationOptions.includes(state.draft.duration)
         ? state.draft.duration
         : defaultDraft.duration,
@@ -141,6 +142,7 @@ function normalizeCachedTask(task: GenerationTask): GenerationTask {
     assets: Array.isArray(task.assets) ? task.assets : [],
     duration: task.duration ?? '5',
     model: isModelId(task.model) ? task.model : 'seedance2.0fast',
+    outputName: task.outputName ?? task.prompt ?? task.finalPrompt ?? '',
     ratio: task.ratio ?? inferLegacyRatio(task.resolution, '16:9'),
     resolution: task.resolution?.includes(':') || !task.resolution ? '720p' : task.resolution
   };

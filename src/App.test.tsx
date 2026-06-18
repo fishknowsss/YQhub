@@ -241,6 +241,42 @@ describe('App', () => {
     });
   });
 
+  it('submits the custom output name with a native task', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const submitTask = vi.fn(async (task) => ({
+      ...task,
+      apiTaskId: 'remote-named-task-1',
+      requestId: 'request-named-1'
+    }));
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
+      submitTask,
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue(account.id);
+    });
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条茶饮短片' }
+    });
+    fireEvent.change(screen.getByLabelText('文件名'), {
+      target: { value: '茶饮上市-横版开场' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: '生成一条茶饮短片',
+          outputName: '茶饮上市-横版开场'
+        })
+      );
+    });
+  });
+
   it('marks a native task failed when remote submit fails', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
@@ -260,12 +296,17 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('提示词'), {
       target: { value: '生成一条茶饮短片' }
     });
+    const beforeSubmit = Date.now() - 1000;
     fireEvent.click(screen.getByRole('button', { name: '生成' }));
 
     await waitFor(() => {
       expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
     });
     expect(within(screen.getByLabelText('当前任务')).getByText('小云雀接口请求失败')).toBeInTheDocument();
+    await waitFor(() => {
+      const savedState = JSON.parse(storage.getItem(WORKSPACE_STORAGE_KEY) ?? '{}') as WorkspaceState;
+      expect(Date.parse(savedState.tasks[0].updatedAt)).toBeGreaterThanOrEqual(beforeSubmit);
+    });
     expect(submitTask).toHaveBeenCalledTimes(1);
   });
 
@@ -384,6 +425,65 @@ describe('App', () => {
     pause.mockRestore();
   });
 
+  it('uses the task ratio for non-vertical previews and encodes Windows paths', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify(
+        createCompletedWorkspace(account, 'C:\\Users\\tester\\Videos\\wide result.mp4', {
+          ratio: '16:9'
+        })
+      )
+    );
+    window.yqhub = createNativeApiMock({
+      accounts: [account]
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('生成一条茶饮短片').length).toBeGreaterThan(0);
+    });
+
+    const preview = screen.getByLabelText('视频预览');
+    const stage = preview.querySelector<HTMLElement>('.preview-stage');
+    const previewVideo = within(preview).getByLabelText('本地视频预览');
+    const historyVideo = screen
+      .getByLabelText('历史记录')
+      .querySelector<HTMLVideoElement>('.history-thumb-button video');
+
+    expect(stage?.style.getPropertyValue('--preview-aspect')).toBe('16 / 9');
+    expect(previewVideo.getAttribute('src')).toBe('file:///C:/Users/tester/Videos/wide%20result.mp4');
+    expect(historyVideo?.getAttribute('src')).toBe('file:///C:/Users/tester/Videos/wide%20result.mp4');
+  });
+
+  it('opens the native edit menu from the prompt context menu', async () => {
+    const showEditContextMenu = vi.fn(async () => undefined);
+    window.yqhub = createNativeApiMock({
+      showEditContextMenu
+    });
+
+    render(<App storage={createMemoryStorage()} />);
+
+    fireEvent.contextMenu(screen.getByLabelText('提示词'));
+
+    expect(showEditContextMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts dropped files across the whole reference asset panel', async () => {
+    render(<App storage={createMemoryStorage()} />);
+
+    fireEvent.drop(screen.getByLabelText('参考素材'), {
+      dataTransfer: {
+        files: [new File(['fake'], 'product.png', { type: 'image/png' })]
+      }
+    });
+
+    await screen.findByText('图一');
+    expect(screen.getByText('继续添加').closest('.asset-dropzone')).toHaveClass('is-compact');
+  });
+
   it('opens image assets in a larger preview and compacts the upload area after assets exist', async () => {
     render(<App storage={createMemoryStorage()} />);
 
@@ -451,7 +551,8 @@ describe('App', () => {
           duration: '5',
           resolution: '720p',
           ratio: '16:9',
-          model: 'seedance2.0fast'
+          model: 'seedance2.0fast',
+          outputName: ''
         },
         tasks: [
           {
@@ -522,6 +623,7 @@ function createNativeApiMock({
   exportDirectory = '/Users/tester/Movies/YQhub/exports',
   openVideo = vi.fn(async () => undefined),
   refreshTask = vi.fn(),
+  showEditContextMenu = vi.fn(async () => undefined),
   submitTask = vi.fn()
 }: {
   accounts?: ApiAccount[];
@@ -530,6 +632,7 @@ function createNativeApiMock({
   exportDirectory?: string;
   openVideo?: ReturnType<typeof vi.fn>;
   refreshTask?: ReturnType<typeof vi.fn>;
+  showEditContextMenu?: ReturnType<typeof vi.fn>;
   submitTask?: ReturnType<typeof vi.fn>;
 } = {}) {
   return {
@@ -540,7 +643,8 @@ function createNativeApiMock({
     refreshTask,
     openVideo,
     getExportDirectory: vi.fn(async () => exportDirectory),
-    chooseExportDirectory
+    chooseExportDirectory,
+    showEditContextMenu
   } as unknown as typeof window.yqhub;
 }
 
@@ -557,7 +661,11 @@ function createNativeAccount(): ApiAccount {
   };
 }
 
-function createCompletedWorkspace(account: ApiAccount, localVideoPath: string): WorkspaceState {
+function createCompletedWorkspace(
+  account: ApiAccount,
+  localVideoPath: string,
+  overrides: Partial<GenerationTask> = {}
+): WorkspaceState {
   return {
     version: 1,
     accounts: [account],
@@ -568,7 +676,8 @@ function createCompletedWorkspace(account: ApiAccount, localVideoPath: string): 
       duration: '5',
       resolution: '720p',
       ratio: '16:9',
-      model: 'seedance2.0fast'
+      model: 'seedance2.0fast',
+      outputName: ''
     },
     tasks: [
       {
@@ -587,11 +696,13 @@ function createCompletedWorkspace(account: ApiAccount, localVideoPath: string): 
         apiTaskId: 'remote-task-1',
         videoUrl: 'https://example.com/generated/remote-task-1.mp4',
         localVideoPath,
+        outputName: '生成一条茶饮短片',
         errorCode: null,
         errorMessage: null,
         requestId: 'request-1',
         createdAt: '2026-06-13T00:00:00.000Z',
-        updatedAt: '2026-06-13T00:00:00.000Z'
+        updatedAt: '2026-06-13T00:00:00.000Z',
+        ...overrides
       }
     ]
   };

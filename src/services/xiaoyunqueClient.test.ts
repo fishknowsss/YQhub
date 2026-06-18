@@ -242,6 +242,7 @@ function createTask(): GenerationTask {
     resolution: '720p',
     ratio: '16:9',
     model: 'seedance2.0fast',
+    outputName: '茶饮短片',
     status: 'in_queue',
     progress: 10,
     etaSeconds: null,

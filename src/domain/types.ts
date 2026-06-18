@@ -45,6 +45,7 @@ export interface DraftState {
   resolution: string;
   ratio: string;
   model: string;
+  outputName: string;
 }
 
 export interface GenerationTask {
@@ -57,6 +58,7 @@ export interface GenerationTask {
   resolution: string;
   ratio: string;
   model: string;
+  outputName: string;
   status: TaskStatus;
   progress: number;
   etaSeconds: number | null;

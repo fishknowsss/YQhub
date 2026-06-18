@@ -78,6 +78,11 @@ const electronMock = vi.hoisted(() => {
       openExternal: vi.fn(async () => undefined),
       openPath: vi.fn(async () => '')
     },
+    Menu: {
+      buildFromTemplate: vi.fn(() => ({
+        popup: vi.fn()
+      }))
+    },
     dialog: {
       showOpenDialog: vi.fn(async () => ({
         canceled: false,
@@ -94,6 +99,7 @@ vi.mock('electron', () => ({
   BrowserWindow: electronMock.BrowserWindowMock,
   dialog: electronMock.dialog,
   ipcMain: electronMock.ipcMain,
+  Menu: electronMock.Menu,
   safeStorage: electronMock.safeStorage,
   shell: electronMock.shell
 }));
@@ -198,6 +204,34 @@ describe('Electron main process', () => {
         properties: ['openDirectory', 'createDirectory']
       })
     );
+  });
+
+  it('registers a native edit context menu for text fields', async () => {
+    await importMain();
+
+    const menu = {
+      popup: vi.fn()
+    };
+    electronMock.Menu.buildFromTemplate.mockReturnValueOnce(menu);
+    const editHandler = electronMock.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === 'edit:showContextMenu'
+    )?.[1];
+
+    expect(editHandler).toBeDefined();
+
+    await editHandler?.();
+
+    expect(electronMock.Menu.buildFromTemplate).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ label: '剪切', role: 'cut' }),
+        expect.objectContaining({ label: '复制', role: 'copy' }),
+        expect.objectContaining({ label: '粘贴', role: 'paste' }),
+        expect.objectContaining({ label: '全选', role: 'selectAll' })
+      ])
+    );
+    expect(menu.popup).toHaveBeenCalledWith({
+      window: electronMock.windows[0]
+    });
   });
 
   it('keeps external navigation out of the app window', async () => {

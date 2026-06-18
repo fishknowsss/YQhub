@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('yqhub', {
   refreshTask: (task) => ipcRenderer.invoke('tasks:refresh', task),
   openVideo: (target) => ipcRenderer.invoke('videos:open', target),
   getExportDirectory: () => ipcRenderer.invoke('settings:getExportDirectory'),
-  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory')
+  chooseExportDirectory: () => ipcRenderer.invoke('settings:chooseExportDirectory'),
+  showEditContextMenu: () => ipcRenderer.invoke('edit:showContextMenu')
 });
