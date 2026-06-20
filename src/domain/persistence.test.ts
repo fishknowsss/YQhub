@@ -27,7 +27,7 @@ describe('workspace persistence', () => {
       draft: {
         prompt: '一支干净利落的产品视频',
         duration: '10',
-        resolution: '480p',
+        resolution: '720p',
         ratio: '9:16',
         outputName: '新品首发'
       }
@@ -70,7 +70,7 @@ describe('workspace persistence', () => {
     storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(staleState));
 
     expect(loadWorkspaceState(storage).draft).toMatchObject({
-      model: 'seedance2.0fast',
+      model: 'Seedance_2.0_mini',
       duration: '15',
       resolution: '720p',
       ratio: '1:1'
@@ -82,7 +82,7 @@ describe('workspace persistence', () => {
     const incompatibleState = {
       ...createInitialState(),
       draft: {
-        model: 'seedance2.0fast',
+        model: 'Seedance_2.0_mini',
         duration: '5',
         resolution: '720p',
         ratio: '16:9'
@@ -94,7 +94,7 @@ describe('workspace persistence', () => {
     expect(loadWorkspaceState(storage).draft).toMatchObject({
       prompt: '',
       assets: [],
-      model: 'seedance2.0fast',
+      model: 'Seedance_2.0_mini',
       outputName: ''
     });
   });

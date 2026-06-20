@@ -33,7 +33,7 @@ describe('task service', () => {
         expect(videoUrl).toBe('https://cdn.example.com/result.mp4');
         expect(outputName).toBe('茶饮上市-横版开场');
         expect(prompt).toBe('生成一条茶饮短片');
-        return '/Users/tester/Movies/YQhub/exports/2026-06-13/茶饮上市-横版开场.mp4';
+        return '/Users/tester/Movies/YQhub/exports/茶饮上市-横版开场.mp4';
       }
     };
     const service = createTaskService({ accountService, client, downloadService });
@@ -47,7 +47,7 @@ describe('task service', () => {
       status: 'done',
       progress: 100,
       videoUrl: 'https://cdn.example.com/result.mp4',
-      localVideoPath: '/Users/tester/Movies/YQhub/exports/2026-06-13/茶饮上市-横版开场.mp4',
+      localVideoPath: '/Users/tester/Movies/YQhub/exports/茶饮上市-横版开场.mp4',
       requestId: 'request-query-1'
     });
     expect(Date.parse(refreshed.updatedAt)).toBeGreaterThanOrEqual(beforeRefresh);

@@ -1,6 +1,7 @@
 export type AssetType = 'image' | 'video' | 'audio';
 export type TaskStatus =
   | 'draft'
+  | 'waiting_submit'
   | 'in_queue'
   | 'processing'
   | 'generating'
@@ -68,6 +69,7 @@ export interface GenerationTask {
   errorCode: string | null;
   errorMessage: string | null;
   requestId: string | null;
+  scheduledSubmitAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

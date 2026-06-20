@@ -26,7 +26,9 @@ describe('App', () => {
     expect(screen.getByLabelText('时长')).toHaveValue('15');
     expect(screen.getByLabelText('清晰度')).toHaveValue('720p');
     expect(screen.getByLabelText('画幅')).toHaveValue('9:16');
-    expect(screen.getByLabelText('模型')).toHaveValue('seedance2.0fast');
+    expect(screen.getByLabelText('模型')).toHaveValue('Seedance_2.0_mini');
+    expect(screen.getByRole('option', { name: 'Seedance 2.0 Fast' })).toBeInTheDocument();
+    expect(within(screen.getByLabelText('清晰度')).getAllByRole('option')).toHaveLength(1);
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
     expect(screen.getByText('本地记录')).toBeInTheDocument();
     expect(screen.queryByLabelText('素材与账号')).not.toBeInTheDocument();
@@ -147,6 +149,31 @@ describe('App', () => {
     expect(storage.getItem(WORKSPACE_STORAGE_KEY)).not.toContain('ak-nativeUserKey1234567890');
   });
 
+  it('deletes the current native account and selects the next saved account', async () => {
+    const storage = createMemoryStorage();
+    const firstAccount = createNativeAccount({ id: 'native-account-1', name: '账号一' });
+    const secondAccount = createNativeAccount({ id: 'native-account-2', name: '账号二' });
+    const deleteAccount = vi.fn(async () => undefined);
+    window.yqhub = createNativeApiMock({
+      accounts: [firstAccount, secondAccount],
+      deleteAccount
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue(firstAccount.id);
+    });
+    fireEvent.click(within(screen.getByLabelText('账号与保存')).getByRole('button', { name: '删除' }));
+
+    await waitFor(() => {
+      expect(deleteAccount).toHaveBeenCalledWith(firstAccount.id);
+    });
+    expect(screen.getByLabelText('当前账号')).toHaveValue(secondAccount.id);
+    expect(within(screen.getByLabelText('当前账号')).queryByRole('option', { name: '账号一' })).not.toBeInTheDocument();
+    expect(screen.getByText('账号已删除')).toBeInTheDocument();
+  });
+
   it('submits a native task with local asset data and no public URL field', async () => {
     const storage = createMemoryStorage();
     const account = createNativeAccount();
@@ -181,7 +208,7 @@ describe('App', () => {
         expect.objectContaining({
           accountId: account.id,
           prompt: '生成一条茶饮短片',
-          model: 'seedance2.0fast',
+          model: 'Seedance_2.0_mini',
           duration: '15',
           resolution: '720p',
           ratio: '9:16',
@@ -194,6 +221,52 @@ describe('App', () => {
       );
     });
     expect(screen.queryByLabelText('图一公网 URL')).not.toBeInTheDocument();
+  });
+
+  it('uses the uploaded file name as the default asset remark', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const submitTask = vi.fn(async (task) => ({
+      ...task,
+      apiTaskId: 'remote-task-1',
+      requestId: 'request-1'
+    }));
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
+      submitTask,
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue(account.id);
+    });
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['fake'], '商业楼外景.png', { type: 'image/png' })]
+      }
+    });
+
+    expect(await screen.findByDisplayValue('商业楼外景')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条短片' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          finalPrompt: '图一是商业楼外景。生成一条短片',
+          assets: [
+            expect.objectContaining({
+              label: '商业楼外景',
+              localName: '商业楼外景.png'
+            })
+          ]
+        })
+      );
+    });
   });
 
   it('submits local video references through the native client', async () => {
@@ -308,6 +381,211 @@ describe('App', () => {
       expect(Date.parse(savedState.tasks[0].updatedAt)).toBeGreaterThanOrEqual(beforeSubmit);
     });
     expect(submitTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a clean network error when Electron wraps a fetch failure', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const submitTask = vi.fn(async () => {
+      throw new Error("Error invoking remote method 'tasks:submit': TypeError: fetch failed");
+    });
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
+      submitTask,
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue(account.id);
+    });
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条茶饮短片' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
+    });
+    expect(within(screen.getByLabelText('当前任务')).getByText('网络连接失败，请稍后重试')).toBeInTheDocument();
+    expect(screen.queryByText(/Error invoking remote method|TypeError: fetch failed/u)).not.toBeInTheDocument();
+  });
+
+  it('shows a short cloud sync error and copies the detailed log when clicked', async () => {
+    const storage = createMemoryStorage();
+    const account = createNativeAccount();
+    const detailedError =
+      "Error invoking remote method 'tasks:submit': Error: 同步到云空间失败 log_id=20260620172159F2E6F9589C7D9B3FE3B";
+    const writeText = vi.fn(async () => undefined);
+    const submitTask = vi.fn(async () => {
+      throw new Error(detailedError);
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText
+      }
+    });
+    window.yqhub = createNativeApiMock({
+      accounts: [account],
+      submitTask,
+    });
+
+    render(<App storage={storage} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('当前账号')).toHaveValue(account.id);
+    });
+    fireEvent.change(screen.getByLabelText('提示词'), {
+      target: { value: '生成一条茶饮短片' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    await waitFor(() => {
+      expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
+    });
+    const currentPanel = screen.getByLabelText('当前任务');
+    const previewPanel = screen.getByLabelText('视频预览');
+    const copyButton = within(currentPanel).getByRole('button', { name: '复制详细错误' });
+
+    expect(copyButton).toHaveTextContent('素材同步失败，请稍后重试');
+    expect(within(previewPanel).getByRole('button', { name: '复制详细错误' })).toHaveTextContent(
+      '素材同步失败，请稍后重试'
+    );
+    expect(within(currentPanel).queryByText(/log_id/u)).not.toBeInTheDocument();
+    expect(within(previewPanel).queryByText(/log_id/u)).not.toBeInTheDocument();
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('同步到云空间失败 log_id=20260620172159F2E6F9589C7D9B3FE3B');
+    });
+    expect(screen.getByText('已复制错误')).toBeInTheDocument();
+  });
+
+  it('queues a second native submit until one minute after the previous submit', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createMemoryStorage();
+      const account = createNativeAccount();
+      const submitTask = vi.fn(async (task: GenerationTask) => ({
+        ...task,
+        apiTaskId: `remote-${task.id}`,
+        requestId: `request-${task.id}`
+      }));
+      window.yqhub = createNativeApiMock({
+        accounts: [account],
+        refreshTask: vi.fn(async (task) => task),
+        submitTask,
+      });
+
+      render(<App storage={storage} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByLabelText('当前账号')).toHaveValue(account.id);
+
+      fireEvent.change(screen.getByLabelText('提示词'), {
+        target: { value: '第一条视频' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(submitTask).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(screen.getByLabelText('提示词'), {
+        target: { value: '第二条视频' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      expect(submitTask).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('等待 60 秒提交')).toBeInTheDocument();
+      expect(within(screen.getByLabelText('当前任务')).getByText('等待提交')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(59_999);
+        await Promise.resolve();
+      });
+      expect(submitTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+        await Promise.resolve();
+      });
+
+      expect(submitTask).toHaveBeenCalledTimes(2);
+      expect(submitTask.mock.calls[1][0]).toMatchObject({
+        prompt: '第二条视频',
+        model: 'Seedance_2.0_mini',
+        status: 'in_queue'
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not rate limit submits from different native accounts', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createMemoryStorage();
+      const firstAccount = createNativeAccount({ id: 'native-account-1', name: '账号一' });
+      const secondAccount = createNativeAccount({ id: 'native-account-2', name: '账号二' });
+      const submitTask = vi.fn(async (task: GenerationTask) => ({
+        ...task,
+        apiTaskId: `remote-${task.id}`,
+        requestId: `request-${task.id}`
+      }));
+      window.yqhub = createNativeApiMock({
+        accounts: [firstAccount, secondAccount],
+        refreshTask: vi.fn(async (task) => task),
+        submitTask,
+      });
+
+      render(<App storage={storage} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByLabelText('当前账号')).toHaveValue(firstAccount.id);
+
+      fireEvent.change(screen.getByLabelText('提示词'), {
+        target: { value: '第一账号视频' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(submitTask).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(screen.getByLabelText('当前账号'), {
+        target: { value: secondAccount.id }
+      });
+      fireEvent.change(screen.getByLabelText('提示词'), {
+        target: { value: '第二账号视频' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(submitTask).toHaveBeenCalledTimes(2);
+      expect(submitTask.mock.calls[0][0]).toMatchObject({
+        accountId: firstAccount.id,
+        prompt: '第一账号视频'
+      });
+      expect(submitTask.mock.calls[1][0]).toMatchObject({
+        accountId: secondAccount.id,
+        prompt: '第二账号视频'
+      });
+      expect(screen.queryByText('等待 60 秒提交')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('marks a native task failed when polling fails', async () => {
@@ -551,7 +829,7 @@ describe('App', () => {
           duration: '5',
           resolution: '720p',
           ratio: '16:9',
-          model: 'seedance2.0fast',
+          model: 'Seedance_2.0_mini',
           outputName: ''
         },
         tasks: [
@@ -591,7 +869,7 @@ describe('App', () => {
 
     expect(screen.getByLabelText('提示词')).toHaveValue('复用这条历史提示词');
     expect(screen.getByLabelText('时长')).toHaveValue('10');
-    expect(screen.getByLabelText('清晰度')).toHaveValue('480p');
+    expect(screen.getByLabelText('清晰度')).toHaveValue('720p');
     expect(screen.getByLabelText('画幅')).toHaveValue('9:16');
     expect(screen.getByDisplayValue('图一是产品正面')).toBeInTheDocument();
   });
@@ -619,6 +897,7 @@ describe('App', () => {
 function createNativeApiMock({
   accounts = [],
   addAccount = vi.fn(),
+  deleteAccount = vi.fn(async () => undefined),
   chooseExportDirectory = vi.fn(async () => '/Users/tester/Movies/YQhub/exports'),
   exportDirectory = '/Users/tester/Movies/YQhub/exports',
   openVideo = vi.fn(async () => undefined),
@@ -628,6 +907,7 @@ function createNativeApiMock({
 }: {
   accounts?: ApiAccount[];
   addAccount?: ReturnType<typeof vi.fn>;
+  deleteAccount?: ReturnType<typeof vi.fn>;
   chooseExportDirectory?: ReturnType<typeof vi.fn>;
   exportDirectory?: string;
   openVideo?: ReturnType<typeof vi.fn>;
@@ -638,7 +918,7 @@ function createNativeApiMock({
   return {
     listAccounts: vi.fn(async () => accounts),
     addAccount,
-    deleteAccount: vi.fn(async () => undefined),
+    deleteAccount,
     submitTask,
     refreshTask,
     openVideo,
@@ -648,7 +928,7 @@ function createNativeApiMock({
   } as unknown as typeof window.yqhub;
 }
 
-function createNativeAccount(): ApiAccount {
+function createNativeAccount(overrides: Partial<ApiAccount> = {}): ApiAccount {
   return {
     id: 'native-account-1',
     name: '本机账号',
@@ -657,7 +937,8 @@ function createNativeAccount(): ApiAccount {
     concurrencyLimit: 1,
     enabled: true,
     createdAt: '2026-06-13T00:00:00.000Z',
-    updatedAt: '2026-06-13T00:00:00.000Z'
+    updatedAt: '2026-06-13T00:00:00.000Z',
+    ...overrides
   };
 }
 
@@ -676,7 +957,7 @@ function createCompletedWorkspace(
       duration: '5',
       resolution: '720p',
       ratio: '16:9',
-      model: 'seedance2.0fast',
+      model: 'Seedance_2.0_mini',
       outputName: ''
     },
     tasks: [
@@ -689,7 +970,7 @@ function createCompletedWorkspace(
         duration: '5',
         resolution: '720p',
         ratio: '16:9',
-        model: 'seedance2.0fast',
+        model: 'Seedance_2.0_mini',
         status: 'done',
         progress: 100,
         etaSeconds: 0,

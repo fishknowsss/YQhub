@@ -151,10 +151,22 @@ label > span,
 
 .account-save-bar {
   display: grid;
-  grid-template-columns: minmax(120px, 0.72fr) minmax(258px, 1.45fr) minmax(150px, 0.9fr) 78px;
+  grid-template-columns: minmax(196px, 1fr) minmax(258px, 1.35fr) minmax(150px, 0.86fr) 78px;
   align-items: end;
   min-width: 0;
   gap: 8px;
+}
+
+.account-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.account-delete-button {
+  width: 72px;
 }
 
 .account-form-inline {
@@ -1019,7 +1031,8 @@ textarea::placeholder {
 }
 
 .task-error,
-.task-error-text {
+.task-error-text,
+.task-error-copy {
   color: var(--danger);
   font-size: 12px;
   line-height: 1.4;
@@ -1034,6 +1047,40 @@ textarea::placeholder {
 .task-error svg {
   flex: 0 0 auto;
   margin-top: 1px;
+}
+
+.task-error-copy {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  width: 100%;
+  min-height: 28px;
+  gap: 7px;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.task-error-copy:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+.task-error-copy svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.task-error-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-error-copy-preview {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
 }
 
 .history-panel {

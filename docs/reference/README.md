@@ -11,4 +11,4 @@ YQhub 当前按小云雀官网“连接 Agent”的 Skill API 实现：
 - `POST /api/biz/v1/skill/get_thread`
 - `Authorization: Bearer <ak-...>`
 - `agent_name: "pippit_video_part_agent"`
-- `video_part_tool_param.model: "seedance2.0_fast_direct"`
+- 默认 `video_part_tool_param.model: "Seedance_2.0_mini"`；`seedance2.0_fast_direct` 仅作为工作台备选项。

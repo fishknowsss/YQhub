@@ -47,6 +47,26 @@ describe('account service', () => {
     expect(() => secondVault.readSecret(firstAccount.apiKeyRef)).toThrow('密钥不存在');
   });
 
+  it('deletes account metadata and removes its local secret', () => {
+    const vault = createMemorySecretVault();
+    const service = createAccountService({ vault });
+    const account = service.addAccount({
+      name: '待删除账号',
+      apiKey: 'ak-deleteUserKey1234567890'
+    });
+
+    service.deleteAccount(account.id);
+
+    expect(service.listAccounts()).toEqual([]);
+    expect(() => vault.readSecret(account.apiKeyRef)).toThrow('密钥不存在');
+  });
+
+  it('rejects deleting an unknown account', () => {
+    const service = createAccountService({ vault: createMemorySecretVault() });
+
+    expect(() => service.deleteAccount('missing-account')).toThrow('账号不存在');
+  });
+
   it('rejects non-ak API keys before writing the vault', () => {
     const vault = createMemorySecretVault();
     const service = createAccountService({ vault });

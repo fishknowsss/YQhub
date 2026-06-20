@@ -40,6 +40,24 @@ describe('queue service', () => {
     expect(Date.parse(submitted.updatedAt)).toBeGreaterThanOrEqual(beforeSubmit);
     expect(calls).toEqual([`${firstAccount.id}:ak-xiaoUserKey1234567890`]);
   });
+
+  it('normalizes transport failures before they cross the Electron IPC boundary', async () => {
+    const accountService = createAccountService({ vault: createMemorySecretVault() });
+    const account = accountService.addAccount({
+      name: '萧衍账号',
+      apiKey: 'ak-xiaoUserKey1234567890'
+    });
+    const client: VideoClient = {
+      submitTask: async () => {
+        throw new TypeError('fetch failed');
+      }
+    };
+    const queue = createQueueService({ accountService, client });
+
+    await expect(queue.submit(createTaskForAccount(account.id))).rejects.toThrow(
+      '网络连接失败，请稍后重试'
+    );
+  });
 });
 
 function createTaskForAccount(accountId: string): GenerationTask {
@@ -63,7 +81,7 @@ function createTaskForAccount(accountId: string): GenerationTask {
     duration: '5',
     resolution: '720p',
     ratio: '16:9',
-    model: 'seedance2.0fast',
+    model: 'Seedance_2.0_mini',
     outputName: '茶饮短片',
     status: 'in_queue',
     progress: 10,

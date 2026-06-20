@@ -38,6 +38,7 @@ import {
   clearDraft,
   createGenerationTask,
   createInitialDraft,
+  deleteApiAccount,
   isXiaoyunqueApiKey,
   selectAccount,
   updateDraft
@@ -71,6 +72,7 @@ const THEME_STORAGE_KEY = 'yqhub-theme:v1';
 const MAX_ASSETS = 8;
 const APP_VERSION = appPackage.version;
 const CURRENT_TASK_TITLE_LIMIT = 30;
+const SUBMIT_INTERVAL_MS = 60_000;
 
 function getBrowserStorage(): StorageLike {
   return window.localStorage;
@@ -84,6 +86,8 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetReference | null>(null);
   const [notice, setNotice] = useState('就绪');
+  const nextNativeSubmitAtByAccountRef = useRef<Map<string, number>>(new Map());
+  const nativeSubmitTimersRef = useRef<number[]>([]);
   const nativeApi = getNativeLocalApi();
 
   const currentAccount = useMemo(
@@ -103,11 +107,63 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     [previewTaskId, state.tasks]
   );
   const previewTask = selectedPreviewTask ?? activeTasks[0] ?? completedTasks[0] ?? null;
+  const hasWaitingSubmitTask = useMemo(
+    () => state.tasks.some((task) => task.status === 'waiting_submit' && task.scheduledSubmitAt),
+    [state.tasks]
+  );
 
   useEffect(() => {
     saveWorkspaceState(storage, state);
     setNotice((current) => (current === '就绪' || current === '已保存' ? '已保存' : current));
   }, [state, storage]);
+
+  useEffect(
+    () => () => {
+      for (const timer of nativeSubmitTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      nativeSubmitTimersRef.current = [];
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!hasWaitingSubmitTask) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+
+      setState((current) => {
+        let changed = false;
+        const tasks = current.tasks.map((task) => {
+          if (task.status !== 'waiting_submit' || !task.scheduledSubmitAt) {
+            return task;
+          }
+
+          const nextEtaSeconds = Math.max(
+            0,
+            Math.ceil((Date.parse(task.scheduledSubmitAt) - now) / 1000)
+          );
+
+          if (task.etaSeconds === nextEtaSeconds) {
+            return task;
+          }
+
+          changed = true;
+          return {
+            ...task,
+            etaSeconds: nextEtaSeconds
+          };
+        });
+
+        return changed ? { ...current, tasks } : current;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [hasWaitingSubmitTask]);
 
   useEffect(() => {
     storage.setItem(THEME_STORAGE_KEY, theme);
@@ -180,7 +236,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
             }
           })
           .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : '查询失败';
+            const message = normalizeNativeTaskError(error, '查询失败');
             setNotice(message);
             setState((current) => markTaskFailed(current, task.id, message));
           });
@@ -238,6 +294,37 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     [accountForm, nativeApi]
   );
 
+  const submitTaskToNative = useCallback(
+    (task: GenerationTask) => {
+      if (!nativeApi) {
+        return;
+      }
+
+      const submittingTask: GenerationTask = {
+        ...task,
+        status: 'in_queue',
+        progress: 10,
+        etaSeconds: null,
+        errorMessage: null,
+        scheduledSubmitAt: null,
+        updatedAt: new Date().toISOString()
+      };
+
+      setState((current) => replaceTask(current, submittingTask));
+      void nativeApi
+        .submitTask(submittingTask)
+        .then((submittedTask) => {
+          setState((current) => replaceTask(current, submittedTask));
+        })
+        .catch((error: unknown) => {
+          const message = normalizeNativeTaskError(error, '生成失败');
+          setNotice(message);
+          setState((current) => markTaskFailed(current, task.id, message));
+        });
+    },
+    [nativeApi]
+  );
+
   const handleSelectAccount = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     if (!event.target.value) {
       return;
@@ -245,6 +332,33 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
 
     setState((current) => selectAccount(current, event.target.value));
   }, []);
+
+  const handleDeleteAccount = useCallback(() => {
+    const accountId = state.currentAccountId;
+
+    if (!accountId) {
+      setNotice('没有账号可删');
+      return;
+    }
+
+    if (nativeApi) {
+      void nativeApi
+        .deleteAccount(accountId)
+        .then(() => {
+          nextNativeSubmitAtByAccountRef.current.delete(accountId);
+          setState((current) => deleteApiAccount(current, accountId));
+          setNotice('账号已删除');
+        })
+        .catch((error: unknown) => {
+          setNotice(error instanceof Error ? error.message : '删除失败');
+        });
+      return;
+    }
+
+    nextNativeSubmitAtByAccountRef.current.delete(accountId);
+    setState((current) => deleteApiAccount(current, accountId));
+    setNotice('账号已删除');
+  }, [nativeApi, state.currentAccountId]);
 
   const handleChooseExportDirectory = useCallback(() => {
     if (!nativeApi) {
@@ -282,37 +396,46 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
+    const accountId = state.currentAccountId;
+
     if (!state.draft.prompt.trim() && state.draft.assets.every((asset) => !asset.label.trim())) {
       setNotice('先写提示词');
       return;
     }
 
     const nextState = createGenerationTask(state);
-    const task = nextState.tasks.at(-1);
+    const createdTask = nextState.tasks.at(-1);
 
-    if (!task) {
+    if (!createdTask) {
       return;
     }
 
-    setState(nextState);
+    const now = Date.now();
+    const nextAccountSubmitAt = nextNativeSubmitAtByAccountRef.current.get(accountId) ?? 0;
+    const submitAt = Math.max(now, nextAccountSubmitAt);
+    const delayMs = Math.max(0, submitAt - now);
+    nextNativeSubmitAtByAccountRef.current.set(accountId, submitAt + SUBMIT_INTERVAL_MS);
+    const task = delayMs > 0 ? markTaskWaitingForSubmit(createdTask, submitAt) : createdTask;
+
+    setState(replaceTask(nextState, task));
     setPreviewTaskId(task.id);
-    setNotice('已提交');
-    void nativeApi
-      .submitTask(task)
-      .then((submittedTask) => {
-        setState((current) => ({
-          ...current,
-          tasks: current.tasks.map((candidate) =>
-            candidate.id === submittedTask.id ? submittedTask : candidate
-          )
-        }));
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : '生成失败';
-        setNotice(message);
-        setState((current) => markTaskFailed(current, task.id, message));
-      });
-  }, [nativeApi, state]);
+
+    if (delayMs === 0) {
+      setNotice('已提交');
+      submitTaskToNative(task);
+      return;
+    }
+
+    const waitSeconds = Math.ceil(delayMs / 1000);
+    setNotice(`等待 ${waitSeconds} 秒提交`);
+    const timer = window.setTimeout(() => {
+      nativeSubmitTimersRef.current = nativeSubmitTimersRef.current.filter(
+        (candidate) => candidate !== timer
+      );
+      submitTaskToNative(task);
+    }, delayMs);
+    nativeSubmitTimersRef.current.push(timer);
+  }, [nativeApi, state, submitTaskToNative]);
 
   const handleClearDraft = useCallback(() => {
     setState((current) => clearDraft(current));
@@ -381,12 +504,27 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
     [nativeApi]
   );
 
+  const handleCopyTaskError = useCallback((message: string) => {
+    void copyText(message)
+      .then(() => {
+        setNotice('已复制错误');
+      })
+      .catch(() => {
+        setNotice('复制失败');
+      });
+  }, []);
+
   const handlePlayTask = useCallback((task: GenerationTask) => {
     setPreviewTaskId(task.id);
     setNotice(task.localVideoPath || task.videoUrl ? '已载入预览' : '成片还没生成');
   }, []);
 
   const handleReuseTask = useCallback((task: GenerationTask) => {
+    const defaultModel = getDefaultModelCapabilities();
+    const durationOptions: readonly string[] = defaultModel.supportedDurations;
+    const resolutionOptions: readonly string[] = defaultModel.supportedResolutions;
+    const ratioOptions: readonly string[] = defaultModel.supportedRatios;
+
     setState((current) =>
       updateDraft(current, {
         prompt: task.prompt,
@@ -394,10 +532,16 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
           ...asset,
           id: `${asset.id}-reuse-${Date.now()}-${index}`
         })),
-        duration: task.duration,
-        resolution: task.resolution,
-        ratio: task.ratio,
-        model: task.model,
+        duration: durationOptions.includes(task.duration)
+          ? task.duration
+          : durationOptions[0],
+        resolution: resolutionOptions.includes(task.resolution)
+          ? task.resolution
+          : resolutionOptions[0],
+        ratio: ratioOptions.includes(task.ratio)
+          ? task.ratio
+          : ratioOptions[0],
+        model: defaultModel.model,
         outputName: ''
       })
     );
@@ -511,6 +655,7 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         onAccountField={handleAccountField}
         onAddAccount={handleAddAccount}
         onChooseExportDirectory={handleChooseExportDirectory}
+        onDeleteAccount={handleDeleteAccount}
         onSelectAccount={handleSelectAccount}
         onThemeToggle={handleThemeToggle}
         theme={theme}
@@ -545,9 +690,10 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
         </section>
 
         <section className="preview-column">
-          <PreviewPanel task={previewTask} />
+          <PreviewPanel task={previewTask} onCopyTaskError={handleCopyTaskError} />
           <CurrentTaskPanel
             accounts={state.accounts}
+            onCopyTaskError={handleCopyTaskError}
             onOpenVideo={handleOpenVideo}
             onRemoveTask={handleRemoveTask}
             tasks={activeTasks}
@@ -581,6 +727,7 @@ interface TopBarProps {
   onAccountField: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddAccount: (event: FormEvent<HTMLFormElement>) => void;
   onChooseExportDirectory: () => void;
+  onDeleteAccount: () => void;
   onSelectAccount: (event: ChangeEvent<HTMLSelectElement>) => void;
   onThemeToggle: () => void;
   theme: ThemeMode;
@@ -597,6 +744,7 @@ function TopBar({
   onAccountField,
   onAddAccount,
   onChooseExportDirectory,
+  onDeleteAccount,
   onSelectAccount,
   onThemeToggle,
   theme
@@ -608,17 +756,33 @@ function TopBar({
         <span>小云雀工作台</span>
       </div>
       <section className="account-save-bar" aria-label="账号与保存">
-        <label className="compact-field">
-          <span>当前账号</span>
-          <select value={currentAccountId ?? ''} onChange={onSelectAccount} disabled={accounts.length === 0}>
+        <div className="compact-field account-picker-field">
+          <span id="current-account-label">当前账号</span>
+          <div className="account-picker-row">
+            <select
+              aria-labelledby="current-account-label"
+              value={currentAccountId ?? ''}
+              onChange={onSelectAccount}
+              disabled={accounts.length === 0}
+            >
             {accounts.length === 0 ? <option value="">未添加</option> : null}
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}
               </option>
             ))}
-          </select>
-        </label>
+            </select>
+            <button
+              className="small-button account-delete-button"
+              type="button"
+              onClick={onDeleteAccount}
+              disabled={!currentAccountId}
+            >
+              <Trash2 size={15} />
+              删除
+            </button>
+          </div>
+        </div>
 
         <form className="account-form-inline" onSubmit={onAddAccount}>
           <label className="compact-field">
@@ -954,16 +1118,26 @@ function ModelControls({ draft, onDraftField }: ModelControlsProps) {
   );
 }
 
-function PreviewPanel({ task }: { task: GenerationTask | null }) {
+interface PreviewPanelProps {
+  onCopyTaskError: (message: string) => void;
+  task: GenerationTask | null;
+}
+
+function PreviewPanel({ onCopyTaskError, task }: PreviewPanelProps) {
   return (
     <section className="workspace-panel preview-panel" aria-label="视频预览">
       <PanelHeading title="视频预览" meta={task ? getStatusText(task.status) : '等待'} icon={<Wand2 size={18} />} />
-      <PreviewStage task={task} />
+      <PreviewStage task={task} onCopyTaskError={onCopyTaskError} />
     </section>
   );
 }
 
-function PreviewStage({ task }: { task: GenerationTask | null }) {
+interface PreviewStageProps {
+  onCopyTaskError: (message: string) => void;
+  task: GenerationTask | null;
+}
+
+function PreviewStage({ onCopyTaskError, task }: PreviewStageProps) {
   const src = task ? getPlayableVideoSource(task.localVideoPath ?? task.videoUrl) : null;
   const previewStyle = getPreviewAspectStyle(task?.ratio);
 
@@ -992,7 +1166,9 @@ function PreviewStage({ task }: { task: GenerationTask | null }) {
           >
             <div className="progress-fill" style={{ width: `${task.progress}%` }} />
           </div>
-          {task.errorMessage ? <p className="task-error-text">{task.errorMessage}</p> : null}
+          {task.errorMessage ? (
+            <TaskErrorButton message={task.errorMessage} onCopy={onCopyTaskError} variant="preview" />
+          ) : null}
         </div>
       </div>
     );
@@ -1161,6 +1337,7 @@ function LocalVideoPlayer({ src }: { src: string }) {
 
 interface CurrentTaskPanelProps {
   accounts: WorkspaceState['accounts'];
+  onCopyTaskError: (message: string) => void;
   onOpenVideo: (task: GenerationTask) => void;
   onRemoveTask: (taskId: string) => void;
   tasks: GenerationTask[];
@@ -1168,6 +1345,7 @@ interface CurrentTaskPanelProps {
 
 function CurrentTaskPanel({
   accounts,
+  onCopyTaskError,
   onOpenVideo,
   onRemoveTask,
   tasks
@@ -1188,6 +1366,7 @@ function CurrentTaskPanel({
             <TaskItem
               accountName={accountNames.get(task.accountId) ?? '本地账号'}
               key={task.id}
+              onCopyTaskError={onCopyTaskError}
               onOpenVideo={onOpenVideo}
               onRemoveTask={onRemoveTask}
               task={task}
@@ -1344,12 +1523,19 @@ function VideoThumbnail({ src }: { src: string }) {
 
 interface TaskItemProps {
   accountName: string;
+  onCopyTaskError: (message: string) => void;
   onOpenVideo: (task: GenerationTask) => void;
   onRemoveTask: (taskId: string) => void;
   task: GenerationTask;
 }
 
-function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProps) {
+function TaskItem({
+  accountName,
+  onCopyTaskError,
+  onOpenVideo,
+  onRemoveTask,
+  task
+}: TaskItemProps) {
   const canOpen = Boolean(task.localVideoPath || task.videoUrl);
   const title = getTaskTitle(task);
   const compactTitle = truncateText(title, CURRENT_TASK_TITLE_LIMIT);
@@ -1377,7 +1563,7 @@ function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProp
         <div className="progress-fill" style={{ width: `${task.progress}%` }} />
       </div>
       <div className="task-bottom">
-        <span>{task.etaSeconds === null ? '估算中' : `约 ${task.etaSeconds} 秒`}</span>
+        <span>{getTaskTimeText(task)}</span>
         <div className="task-actions">
           <button disabled={!canOpen} onClick={() => onOpenVideo(task)} type="button">
             <FolderOpen size={14} />
@@ -1389,12 +1575,29 @@ function TaskItem({ accountName, onOpenVideo, onRemoveTask, task }: TaskItemProp
         </div>
       </div>
       {task.errorMessage ? (
-        <div className="task-error">
-          <AlertCircle size={15} />
-          {task.errorMessage}
-        </div>
+        <TaskErrorButton message={task.errorMessage} onCopy={onCopyTaskError} />
       ) : null}
     </article>
+  );
+}
+
+interface TaskErrorButtonProps {
+  message: string;
+  onCopy: (message: string) => void;
+  variant?: 'task' | 'preview';
+}
+
+function TaskErrorButton({ message, onCopy, variant = 'task' }: TaskErrorButtonProps) {
+  return (
+    <button
+      aria-label="复制详细错误"
+      className={`task-error-copy${variant === 'preview' ? ' task-error-copy-preview' : ''}`}
+      type="button"
+      onClick={() => onCopy(message)}
+    >
+      {variant === 'task' ? <AlertCircle size={15} /> : null}
+      <span>{getTaskErrorSummary(message)}</span>
+    </button>
   );
 }
 
@@ -1421,6 +1624,10 @@ function StatusIcon({ status }: { status: GenerationTask['status'] }) {
     return <CheckCircle2 aria-label="已完成" size={17} />;
   }
 
+  if (status === 'waiting_submit') {
+    return <Clock3 aria-label="等待提交" size={17} />;
+  }
+
   if (status === 'failed' || status === 'expired' || status === 'not_found') {
     return <AlertCircle aria-label="失败" size={17} />;
   }
@@ -1435,13 +1642,18 @@ async function createAssetReference(file: File, index: number): Promise<AssetRef
   return {
     id: `asset-${Date.now()}-${index}`,
     type,
-    label: '',
+    label: getDefaultAssetLabel(file.name),
     localName: file.name,
     previewUrl: dataUrl,
     dataUrl,
     mimeType: file.type,
     uploadStatus: 'local'
   };
+}
+
+function getDefaultAssetLabel(fileName: string): string {
+  const trimmedName = fileName.trim();
+  return trimmedName.replace(/\.[^./\\]+$/u, '') || trimmedName;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -1525,6 +1737,7 @@ function getTaskTitle(task: GenerationTask): string {
 function getStatusText(status: GenerationTask['status']): string {
   const statusMap: Record<GenerationTask['status'], string> = {
     draft: '草稿',
+    waiting_submit: '等待提交',
     in_queue: '排队中',
     processing: '处理中',
     generating: '生成中',
@@ -1535,6 +1748,14 @@ function getStatusText(status: GenerationTask['status']): string {
   };
 
   return statusMap[status];
+}
+
+function getTaskTimeText(task: GenerationTask): string {
+  if (task.status === 'waiting_submit') {
+    return task.etaSeconds === null ? '等待提交' : `${task.etaSeconds} 秒后提交`;
+  }
+
+  return task.etaSeconds === null ? '估算中' : `约 ${task.etaSeconds} 秒`;
 }
 
 function getPreviewAspectStyle(ratio: string | undefined): CSSProperties {
@@ -1604,12 +1825,98 @@ function markTaskFailed(state: WorkspaceState, taskId: string, message: string):
             ...task,
             status: 'failed',
             progress: 0,
+            etaSeconds: null,
+            scheduledSubmitAt: null,
             errorMessage: message,
             updatedAt: new Date().toISOString()
           }
         : task
     )
   };
+}
+
+function replaceTask(state: WorkspaceState, nextTask: GenerationTask): WorkspaceState {
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => (task.id === nextTask.id ? nextTask : task))
+  };
+}
+
+function markTaskWaitingForSubmit(task: GenerationTask, submitAt: number): GenerationTask {
+  return {
+    ...task,
+    status: 'waiting_submit',
+    progress: 5,
+    etaSeconds: Math.max(0, Math.ceil((submitAt - Date.now()) / 1000)),
+    scheduledSubmitAt: new Date(submitAt).toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function normalizeNativeTaskError(error: unknown, fallback: string): string {
+  const rawMessage = error instanceof Error ? error.message : String(error || '');
+  const strippedMessage = cleanTaskErrorMessage(rawMessage);
+
+  if (isTransportErrorMessage(strippedMessage)) {
+    return '网络连接失败，请稍后重试';
+  }
+
+  return strippedMessage || fallback;
+}
+
+function getTaskErrorSummary(message: string): string {
+  const cleaned = cleanTaskErrorMessage(message);
+
+  if (isTransportErrorMessage(cleaned)) {
+    return '网络连接失败，请稍后重试';
+  }
+
+  if (/同步到云空间失败/u.test(cleaned)) {
+    return '素材同步失败，请稍后重试';
+  }
+
+  if (/Access Key 未通过|鉴权|unauthorized/iu.test(cleaned)) {
+    return '账号鉴权失败';
+  }
+
+  const withoutLogId = cleaned.replace(/\s*log_id=[A-Za-z0-9_-]+/iu, '').trim();
+  return truncateText(withoutLogId || '生成失败', 36);
+}
+
+function cleanTaskErrorMessage(message: string): string {
+  return message
+    .replace(/^Error invoking remote method '[^']+':\s*/u, '')
+    .replace(/^Error:\s*/u, '')
+    .trim();
+}
+
+async function copyText(text: string): Promise<void> {
+  const cleaned = cleanTaskErrorMessage(text);
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(cleaned);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = cleaned;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    if (!document.execCommand('copy')) {
+      throw new Error('复制失败');
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
+function isTransportErrorMessage(message: string): boolean {
+  return /fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR/iu.test(message);
 }
 
 function loadTheme(storage: StorageLike): ThemeMode {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GenerationTask } from '../domain/types';
 import {
   buildSeedanceSubmitBody,
@@ -15,14 +15,14 @@ describe('xiaoyunque seedance client', () => {
       })
     ).toEqual({
       agent_name: 'pippit_video_part_agent',
-      message: '生成一条茶饮短片\n\n图一是产品\n视频一是动作参考',
+      message: '图一是产品，视频二是动作参考。生成一条茶饮短片',
       video_part_tool_param: {
         images: [{ pippit_asset_id: 'img-asset-1' }],
         videos: [{ pippit_asset_id: 'video-asset-1' }],
-        prompt: '生成一条茶饮短片\n\n图一是产品\n视频一是动作参考',
+        prompt: '图一是产品，视频二是动作参考。生成一条茶饮短片',
         duration_sec: 5,
         ratio: '16:9',
-        model: 'seedance2.0_fast_direct',
+        model: 'Seedance_2.0_mini',
         resolution: '720p'
       }
     });
@@ -85,11 +85,89 @@ describe('xiaoyunque seedance client', () => {
       video_part_tool_param: {
         images: [{ pippit_asset_id: 'asset-1' }],
         videos: [{ pippit_asset_id: 'asset-2' }],
-        model: 'seedance2.0_fast_direct'
+        model: 'Seedance_2.0_mini'
       }
     });
     expect(calls[2].url).not.toContain('visual.volcengineapi.com');
     expect(calls[2].url).not.toContain('ark.cn-beijing');
+  });
+
+  it('waits briefly after local uploads before submitting to let cloud assets settle', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      const fetcher: XiaoyunqueFetcherLike = async (url) => {
+        calls.push(url);
+
+        if (url.endsWith('/api/biz/v1/skill/upload_file')) {
+          return okJson({
+            ret: '0',
+            data: {
+              pippit_asset_id: `asset-${calls.length}`
+            }
+          });
+        }
+
+        return okJson({
+          ret: '0',
+          data: {
+            run: {
+              thread_id: 'thread_123',
+              run_id: 'run_456'
+            }
+          }
+        });
+      };
+      const client = createXiaoyunqueClient({ fetcher });
+
+      const submit = client.submitTask({
+        credentials: createCredentials(),
+        task: createTask()
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(calls).toEqual([
+        'https://xyq.jianying.com/api/biz/v1/skill/upload_file',
+        'https://xyq.jianying.com/api/biz/v1/skill/upload_file'
+      ]);
+
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(calls).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(submit).resolves.toMatchObject({
+        apiTaskId: 'thread_123:run_456'
+      });
+      expect(calls[2]).toBe('https://xyq.jianying.com/api/biz/v1/skill/submit_run');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('turns transport fetch failures into a readable retry message', async () => {
+    const client = createXiaoyunqueClient({
+      fetcher: async () => {
+        throw new TypeError('fetch failed');
+      }
+    });
+
+    await expect(
+      client.submitTask({
+        credentials: createCredentials(),
+        task: createTask()
+      })
+    ).rejects.toThrow('网络连接失败，请稍后重试');
+  });
+
+  it('keeps the previous Fast model submit mapping available', () => {
+    expect(
+      buildSeedanceSubmitBody({ ...createTask(), model: 'seedance2.0fast' }, {
+        imageAssetIds: [],
+        videoAssetIds: []
+      }).video_part_tool_param.model
+    ).toBe('seedance2.0_fast_direct');
   });
 
   it('queries and normalizes completed video results', async () => {
@@ -215,12 +293,12 @@ function createTask(): GenerationTask {
     id: 'local-task-1',
     accountId: 'account-1',
     prompt: '生成一条茶饮短片',
-    finalPrompt: '生成一条茶饮短片\n\n图一是产品\n视频一是动作参考',
+    finalPrompt: '图一是产品，视频二是动作参考。生成一条茶饮短片',
     assets: [
       {
         id: 'asset-1',
         type: 'image',
-        label: '图一是产品',
+        label: '产品',
         localName: 'product.png',
         previewUrl: 'blob:product',
         dataUrl: 'data:image/png;base64,ZmFrZQ==',
@@ -230,7 +308,7 @@ function createTask(): GenerationTask {
       {
         id: 'asset-video',
         type: 'video',
-        label: '视频一是动作参考',
+        label: '动作参考',
         localName: 'motion.mp4',
         previewUrl: 'blob:motion',
         dataUrl: 'data:video/mp4;base64,ZmFrZQ==',
@@ -241,7 +319,7 @@ function createTask(): GenerationTask {
     duration: '5',
     resolution: '720p',
     ratio: '16:9',
-    model: 'seedance2.0fast',
+    model: 'Seedance_2.0_mini',
     outputName: '茶饮短片',
     status: 'in_queue',
     progress: 10,

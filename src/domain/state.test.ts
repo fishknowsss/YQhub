@@ -4,15 +4,16 @@ import {
   clearDraft,
   createGenerationTask,
   createInitialState,
+  deleteApiAccount,
   isXiaoyunqueApiKey,
   selectAccount,
   updateDraft
 } from './state';
 
 describe('workspace state', () => {
-  it('starts with seedance2.0fast and documented default parameters', () => {
+  it('starts with Seedance_2.0_mini and documented default parameters', () => {
     expect(createInitialState().draft).toMatchObject({
-      model: 'seedance2.0fast',
+      model: 'Seedance_2.0_mini',
       duration: '15',
       resolution: '720p',
       ratio: '9:16',
@@ -88,6 +89,27 @@ describe('workspace state', () => {
     expect(Date.parse(state.accounts[0].updatedAt)).toBeGreaterThanOrEqual(beforeCreate);
   });
 
+  it('deletes a local API account and selects the next available account', () => {
+    let state = createInitialState();
+
+    state = addApiAccount(state, {
+      name: '账号一',
+      apiKey: 'ak-firstUserKey1234567890'
+    });
+    state = addApiAccount(state, {
+      name: '账号二',
+      apiKey: 'ak-secondUserKey1234567890'
+    });
+
+    const [first, second] = state.accounts;
+
+    state = deleteApiAccount(state, first.id);
+
+    expect(state.accounts).toEqual([second]);
+    expect(state.currentAccountId).toBe(second.id);
+    expect(() => deleteApiAccount(state, first.id)).toThrow('账号不存在');
+  });
+
   it('accepts only Xiaoyunque-style ak API keys', () => {
     expect(isXiaoyunqueApiKey('ak-localUserKey1234567890')).toBe(true);
     expect(isXiaoyunqueApiKey('sk-localUserKey1234567890')).toBe(false);
@@ -127,26 +149,26 @@ describe('workspace state', () => {
     expect(state.draft.assets).toEqual([]);
   });
 
-  it('builds finalPrompt from the manual prompt and asset labels', () => {
+  it('places asset remarks as natural prompt prefixes before the manual prompt', () => {
     let state = addApiAccount(createInitialState(), {
       name: '本地账号',
       apiKey: 'ak-localUserKey1234567890'
     });
 
     state = updateDraft(state, {
-      prompt: '保持人物关系清楚，镜头干净',
+      prompt: '保持人物关系清楚，镜头干净。',
       assets: [
         {
           id: 'asset-1',
           type: 'image',
-          label: '图一是萧衍',
+          label: '萧衍',
           localName: 'xiao.png',
           previewUrl: 'blob:xiao'
         },
         {
           id: 'asset-2',
           type: 'image',
-          label: '图二是言笑',
+          label: '言笑',
           localName: 'yan.png',
           previewUrl: 'blob:yan'
         }
@@ -154,7 +176,30 @@ describe('workspace state', () => {
     });
     state = createGenerationTask(state);
 
-    expect(state.tasks[0].finalPrompt).toBe('保持人物关系清楚，镜头干净\n\n图一是萧衍\n图二是言笑');
+    expect(state.tasks[0].finalPrompt).toBe('图一是萧衍，图二是言笑。保持人物关系清楚，镜头干净。');
+  });
+
+  it('does not duplicate existing asset prefixes when old labels are reused', () => {
+    let state = addApiAccount(createInitialState(), {
+      name: '本地账号',
+      apiKey: 'ak-localUserKey1234567890'
+    });
+
+    state = updateDraft(state, {
+      prompt: '生成一条茶饮短片',
+      assets: [
+        {
+          id: 'asset-1',
+          type: 'image',
+          label: '图一是产品正面',
+          localName: 'product.png',
+          previewUrl: 'blob:product'
+        }
+      ]
+    });
+    state = createGenerationTask(state);
+
+    expect(state.tasks[0].finalPrompt).toBe('图一是产品正面。生成一条茶饮短片');
   });
 
   it('timestamps generation tasks with the current time', () => {

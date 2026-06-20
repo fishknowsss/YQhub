@@ -1,5 +1,5 @@
 import type { GenerationTask, TaskStatus } from '../../domain/types';
-import { isModelId } from '../../shared/modelCapabilities';
+import { isKnownSubmitModelId } from '../../shared/modelCapabilities';
 import type { ApiCredentials, AccountService } from './accountService';
 
 export interface SubmitTaskInput {
@@ -32,15 +32,21 @@ export function createQueueService({
 }: CreateQueueServiceOptions): QueueService {
   return {
     async submit(task) {
-      if (!isModelId(task.model)) {
+      if (!isKnownSubmitModelId(task.model)) {
         throw new Error('模型不存在');
       }
 
       const credentials = accountService.getCredentials(task.accountId);
-      const result = await client.submitTask({
-        credentials,
-        task
-      });
+      let result: SubmitTaskResult;
+
+      try {
+        result = await client.submitTask({
+          credentials,
+          task
+        });
+      } catch (error) {
+        throw new Error(normalizeSubmitErrorMessage(error));
+      }
 
       return {
         ...task,
@@ -51,4 +57,18 @@ export function createQueueService({
       };
     }
   };
+}
+
+function normalizeSubmitErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || '');
+
+  if (isTransportErrorMessage(message)) {
+    return '网络连接失败，请稍后重试';
+  }
+
+  return message.trim() || '提交生成失败';
+}
+
+function isTransportErrorMessage(message: string): boolean {
+  return /fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR/iu.test(message);
 }

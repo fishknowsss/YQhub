@@ -135,16 +135,24 @@ function inferLegacyRatio(value: string | undefined, fallback: string): string {
 }
 
 function normalizeCachedTask(task: GenerationTask): GenerationTask {
+  const defaultModel = getDefaultModelCapabilities().model;
+  const status = task.status === 'waiting_submit' ? 'failed' : task.status;
   const normalizedTask: GenerationTask = {
     ...task,
     prompt: task.prompt ?? '',
     finalPrompt: task.finalPrompt ?? task.prompt ?? '',
     assets: Array.isArray(task.assets) ? task.assets : [],
     duration: task.duration ?? '5',
-    model: isModelId(task.model) ? task.model : 'seedance2.0fast',
+    model: isModelId(task.model) ? task.model : defaultModel,
     outputName: task.outputName ?? task.prompt ?? task.finalPrompt ?? '',
     ratio: task.ratio ?? inferLegacyRatio(task.resolution, '16:9'),
-    resolution: task.resolution?.includes(':') || !task.resolution ? '720p' : task.resolution
+    resolution: task.resolution?.includes(':') || !task.resolution ? '720p' : task.resolution,
+    status,
+    scheduledSubmitAt: null,
+    errorMessage:
+      task.status === 'waiting_submit'
+        ? task.errorMessage ?? '提交已中断，请重新生成'
+        : task.errorMessage
   };
   const hasPlaceholderVideoUrl = isPlaceholderVideoUrl(task.videoUrl);
   const hasPlaceholderLocalPath = task.localVideoPath?.startsWith('~/Movies/YQhub/exports/') ?? false;

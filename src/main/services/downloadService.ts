@@ -31,15 +31,10 @@ export function createDownloadService(options: CreateDownloadServiceOptions = {}
   return {
     async downloadGeneratedVideo(input) {
       const currentDate = now();
-      const dateSegment = currentDate.toISOString().slice(0, 10);
-      const outputPath = path.join(
-        resolveOutputDirectory(getHomeDir, outputDirectory),
-        dateSegment,
-        `${buildOutputFileBase(input, currentDate)}.mp4`
-      );
+      const outputBase = resolveOutputDirectory(getHomeDir, outputDirectory);
+      const fileBase = buildOutputFileBase(input, currentDate);
       const bytes = await fetchBytes(input.videoUrl);
-      await writeFile(outputPath, bytes);
-      return outputPath;
+      return writeUniqueVideoFile(outputBase, fileBase, bytes, writeFile);
     }
   };
 }
@@ -56,7 +51,39 @@ async function defaultFetchBytes(url: string): Promise<Uint8Array> {
 
 async function defaultWriteFile(outputPath: string, bytes: Uint8Array): Promise<void> {
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await nodeWriteFile(outputPath, bytes);
+  await nodeWriteFile(outputPath, bytes, { flag: 'wx' });
+}
+
+async function writeUniqueVideoFile(
+  outputDirectory: string,
+  fileBase: string,
+  bytes: Uint8Array,
+  writeFile: NonNullable<CreateDownloadServiceOptions['writeFile']>
+): Promise<string> {
+  for (let attempt = 1; attempt <= 1000; attempt += 1) {
+    const suffix = attempt === 1 ? '' : `-${attempt}`;
+    const outputPath = path.join(outputDirectory, `${fileBase}${suffix}.mp4`);
+
+    try {
+      await writeFile(outputPath, bytes);
+      return outputPath;
+    } catch (error) {
+      if (!isFileExistsError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('文件名重复过多，请换一个文件名');
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === 'EEXIST'
+  );
 }
 
 function resolveOutputDirectory(

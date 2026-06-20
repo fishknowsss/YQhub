@@ -6,8 +6,9 @@ import type {
   GenerationTask,
   WorkspaceState
 } from './types';
+import { getDefaultModelCapabilities } from '../shared/modelCapabilities';
 
-const DEFAULT_MODEL = 'seedance2.0fast';
+const DEFAULT_MODEL = getDefaultModelCapabilities().model;
 const XIAOYUNQUE_API_KEY_PATTERN = /^ak-[A-Za-z0-9_-]{12,}$/u;
 const XIAOYUNQUE_API_KEY_ERROR = '只支持小云雀官网发放的 ak- API Key';
 
@@ -76,6 +77,22 @@ export function selectAccount(state: WorkspaceState, accountId: string): Workspa
   };
 }
 
+export function deleteApiAccount(state: WorkspaceState, accountId: string): WorkspaceState {
+  if (!state.accounts.some((account) => account.id === accountId)) {
+    throw new Error('账号不存在');
+  }
+
+  const accounts = state.accounts.filter((account) => account.id !== accountId);
+  const currentAccountId =
+    state.currentAccountId === accountId ? accounts[0]?.id ?? null : state.currentAccountId;
+
+  return {
+    ...state,
+    accounts,
+    currentAccountId
+  };
+}
+
 export function updateDraft(
   state: WorkspaceState,
   patch: Partial<DraftState>
@@ -134,17 +151,55 @@ export function createGenerationTask(state: WorkspaceState): WorkspaceState {
 
 export function buildFinalPrompt(prompt: string, assets: AssetReference[]): string {
   const cleanPrompt = prompt.trim();
-  const labels = assets.map((asset) => asset.label.trim()).filter(Boolean);
+  const assetDescriptions = assets
+    .map((asset, index) => buildAssetDescription(asset, index))
+    .filter(Boolean);
 
-  if (labels.length === 0) {
+  if (assetDescriptions.length === 0) {
     return cleanPrompt;
   }
 
   if (!cleanPrompt) {
-    return labels.join('\n');
+    return `${assetDescriptions.join('，')}。`;
   }
 
-  return `${cleanPrompt}\n\n${labels.join('\n')}`;
+  return `${assetDescriptions.join('，')}。${cleanPrompt}`;
+}
+
+function buildAssetDescription(asset: AssetReference, index: number): string {
+  const prefix = getAssetLabelPrefix(asset.type, index);
+  const remark = stripExistingAssetPrefix(asset.label.trim());
+
+  if (!remark) {
+    return '';
+  }
+
+  return `${prefix}是${remark}`;
+}
+
+function stripExistingAssetPrefix(label: string): string {
+  return label
+    .replace(/^(?:图|视频|音频)[一二三四五六七八九十\d]+\s*(?:是|为|:|：)?\s*/u, '')
+    .trim();
+}
+
+function getAssetLabelPrefix(type: AssetReference['type'], index: number): string {
+  const order = formatOrder(index + 1);
+
+  if (type === 'video') {
+    return `视频${order}`;
+  }
+
+  if (type === 'audio') {
+    return `音频${order}`;
+  }
+
+  return `图${order}`;
+}
+
+function formatOrder(order: number): string {
+  const numerals = ['一', '二', '三', '四', '五', '六', '七', '八'];
+  return numerals[order - 1] ?? String(order);
 }
 
 function createKeyReference(input: ApiAccountInput): string {

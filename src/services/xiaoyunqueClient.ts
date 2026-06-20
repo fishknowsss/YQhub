@@ -5,7 +5,7 @@ import type {
   RemoteSubmitTaskResult,
   RemoteTaskStatus
 } from '../main/services/taskService';
-import { MODEL_CAPABILITIES, type ModelId } from '../shared/modelCapabilities';
+import { MODEL_CAPABILITIES, isKnownSubmitModelId } from '../shared/modelCapabilities';
 
 const DEFAULT_ENDPOINT = 'https://xyq.jianying.com';
 const UPLOAD_FILE_PATH = '/api/biz/v1/skill/upload_file';
@@ -14,6 +14,7 @@ const GET_THREAD_PATH = '/api/biz/v1/skill/get_thread';
 const VIDEO_PART_AGENT_NAME = 'pippit_video_part_agent';
 const RUN_STATE_SUCCESS = 3;
 const RUN_STATE_FAILED = 4;
+const CLOUD_ASSET_SETTLE_MS = 3_000;
 
 interface XiaoyunqueFetchResponseLike {
   ok?: boolean;
@@ -99,6 +100,11 @@ export function createXiaoyunqueClient(options: CreateXiaoyunqueClientOptions = 
         apiKey: input.credentials.apiKey,
         task: input.task
       });
+
+      if (hasLocalUploadedAssets(input.task)) {
+        await wait(CLOUD_ASSET_SETTLE_MS);
+      }
+
       const body = buildSeedanceSubmitBody(input.task, uploaded);
       const raw = await requestJson<SubmitRunResponse>(fetcher, endpoint, input.credentials.apiKey, SUBMIT_RUN_PATH, body);
       const data = assertSuccessEnvelope(raw, '提交生成失败');
@@ -248,14 +254,16 @@ async function requestJson<T>(
   path: string,
   body: unknown
 ): Promise<T> {
-  const response = await fetcher(endpoint + path, {
-    method: 'POST',
-    headers: {
-      ...authHeaders(apiKey),
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
+  const response = await runRequest(() =>
+    fetcher(endpoint + path, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(apiKey),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+  );
 
   return parseCheckedResponse<T>(response);
 }
@@ -267,13 +275,25 @@ async function requestForm<T>(
   path: string,
   body: FormData
 ): Promise<T> {
-  const response = await fetcher(endpoint + path, {
-    method: 'POST',
-    headers: authHeaders(apiKey),
-    body
-  });
+  const response = await runRequest(() =>
+    fetcher(endpoint + path, {
+      method: 'POST',
+      headers: authHeaders(apiKey),
+      body
+    })
+  );
 
   return parseCheckedResponse<T>(response);
+}
+
+async function runRequest(
+  request: () => Promise<XiaoyunqueFetchResponseLike>
+): Promise<XiaoyunqueFetchResponseLike> {
+  try {
+    return await request();
+  } catch (error) {
+    throw new Error(normalizeTransportErrorMessage(error));
+  }
 }
 
 function authHeaders(apiKey: string): HeadersInit {
@@ -351,6 +371,14 @@ function mediaRefs(assetIds: string[]): MediaAssetRef[] {
     .map((assetId) => assetId.trim())
     .filter(Boolean)
     .map((assetId) => (isHttpUrl(assetId) ? { url: assetId } : { pippit_asset_id: assetId }));
+}
+
+function hasLocalUploadedAssets(task: GenerationTask): boolean {
+  return task.assets.some((asset) => !asset.publicUrl?.trim() || Boolean(asset.dataUrl?.trim()));
+}
+
+function wait(durationMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 function getPrompt(task: GenerationTask): string {
@@ -488,11 +516,11 @@ function decodeRemoteTaskId(value: string): { threadId: string; runId: string } 
 }
 
 function requireModel(model: string) {
-  if (!(model in MODEL_CAPABILITIES)) {
+  if (!isKnownSubmitModelId(model)) {
     throw new Error('模型不存在');
   }
 
-  return MODEL_CAPABILITIES[model as ModelId];
+  return MODEL_CAPABILITIES[model];
 }
 
 function parseDurationSeconds(duration: string): number {
@@ -537,6 +565,16 @@ function normalizeXiaoyunqueErrorMessage(message: string): string {
   }
 
   return message;
+}
+
+function normalizeTransportErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || '');
+
+  if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR/iu.test(message)) {
+    return '网络连接失败，请稍后重试';
+  }
+
+  return message.trim() || '小云雀接口请求失败';
 }
 
 function extensionForAsset(asset: AssetReference): string {

@@ -8,7 +8,6 @@ describe('download service', () => {
     const expectedPath = path.join(
       '/Users/tester',
       'Downloads',
-      '2026-06-13',
       'YQhub-20260613-0910-生成一条茶饮短片-产品在桌面旋转.mp4'
     );
     const service = createDownloadService({
@@ -56,11 +55,47 @@ describe('download service', () => {
         outputName: '茶饮上市-竖版开场',
         prompt: '生成一条茶饮短片'
       })
-    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '2026-06-13', '茶饮上市-竖版开场.mp4'));
+    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '茶饮上市-竖版开场.mp4'));
     expect(writes[0]).toEqual({
-      path: path.join('/Volumes/Studio/YQhub', '2026-06-13', '茶饮上市-竖版开场.mp4'),
+      path: path.join('/Volumes/Studio/YQhub', '茶饮上市-竖版开场.mp4'),
       bytes: new Uint8Array([4, 5, 6])
     });
+  });
+
+  it('keeps existing files by adding a numeric suffix', async () => {
+    const existingPath = path.join('/Volumes/Studio/YQhub', '茶饮上市-竖版开场.mp4');
+    const writtenPaths = new Set([existingPath]);
+    const writes: Array<{ path: string; bytes: Uint8Array }> = [];
+    const service = createDownloadService({
+      outputDirectory: '/Volumes/Studio/YQhub',
+      now: () => new Date('2026-06-13T09:10:00.000Z'),
+      fetchBytes: async () => new Uint8Array([4, 5, 6]),
+      writeFile: async (path, bytes) => {
+        if (writtenPaths.has(path)) {
+          const error = new Error('already exists') as NodeJS.ErrnoException;
+          error.code = 'EEXIST';
+          throw error;
+        }
+
+        writtenPaths.add(path);
+        writes.push({ path, bytes });
+      }
+    });
+
+    await expect(
+      service.downloadGeneratedVideo({
+        taskId: 'remote-task-9',
+        videoUrl: 'https://cdn.example.com/vertical.mp4',
+        outputName: '茶饮上市-竖版开场',
+        prompt: '生成一条茶饮短片'
+      })
+    ).resolves.toBe(path.join('/Volumes/Studio/YQhub', '茶饮上市-竖版开场-2.mp4'));
+    expect(writes).toEqual([
+      {
+        path: path.join('/Volumes/Studio/YQhub', '茶饮上市-竖版开场-2.mp4'),
+        bytes: new Uint8Array([4, 5, 6])
+      }
+    ]);
   });
 
   it('sanitizes empty or unsafe names before writing', async () => {
@@ -81,7 +116,7 @@ describe('download service', () => {
         outputName: '  ../  ',
         prompt: ''
       })
-    ).resolves.toBe(path.join('/Users/tester', 'Downloads', '2026-06-13', 'YQhub-20260613-0910.mp4'));
+    ).resolves.toBe(path.join('/Users/tester', 'Downloads', 'YQhub-20260613-0910.mp4'));
     expect(writes[0].path).not.toContain('skill_x7');
   });
 });
