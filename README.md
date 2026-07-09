@@ -131,6 +131,8 @@ release/YQhub-v<version>/
 npm run check
 ```
 
+GitHub Actions 的 push / pull request 工作流也只运行 `npm run check`。安装包构建只允许手动触发，并且不会上传 Actions artifact；正式安装包应通过 GitHub Release、网盘或其他明确的交付渠道发布。
+
 当前测试覆盖重点包括：
 
 - 小云雀请求体、任务状态和错误归一化。
@@ -148,6 +150,7 @@ npm run check
 - 不提交 `.env`、`.env.*`、真实 API Key、账号截图或本地用户数据。
 - 不提交 `dist/`、`dist-electron/`、`release/`、`node_modules/` 等生成产物。
 - 安装包通过 GitHub Release、网盘或其他交付渠道发布，不直接提交到 git。
+- 不用自动 push workflow 分发未签名安装包。
 - 新增接口资料时标明“历史参考”或“当前实现依据”，避免 README 与源码再次漂移。
 
 ## License

@@ -1,17 +1,47 @@
-name: Build Installers
+name: CI
 
 on:
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Build local installer bundles for verification only
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-macos:
-    name: macOS
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+  package-macos:
+    name: Package macOS
+    if: github.event_name == 'workflow_dispatch' && inputs.package
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -26,19 +56,15 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build
+      - name: Build installer bundle
         run: npm run dist:mac && npm run release:bundle
 
-      - name: Upload macOS installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: YQhub-macos
-          path: release/YQhub-v*/
-          if-no-files-found: error
-          retention-days: 3
+      - name: List generated bundle
+        run: find release -maxdepth 2 -type f | sort
 
-  build-windows:
-    name: Windows
+  package-windows:
+    name: Package Windows
+    if: github.event_name == 'workflow_dispatch' && inputs.package
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -53,13 +79,9 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build
+      - name: Build installer bundle
         run: npm run dist:win && npm run release:bundle
 
-      - name: Upload Windows installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: YQhub-windows
-          path: release/YQhub-v*/
-          if-no-files-found: error
-          retention-days: 3
+      - name: List generated bundle
+        shell: pwsh
+        run: Get-ChildItem -Path release -Recurse -File | Sort-Object FullName | ForEach-Object { $_.FullName }
