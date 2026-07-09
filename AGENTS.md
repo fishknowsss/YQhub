@@ -21,3 +21,10 @@
 
 - Before coding, propose layout and component tree.
 - After coding, self-check against all forbidden patterns.
+
+## Release Rules
+
+- Final user-facing installers belong in `release/YQhub-v<version>/`.
+- Keep only the current release folder and the previous release folder as backup.
+- Do not leave root-level installer files, blockmaps, `latest*.yml`, `builder-debug.yml`, `mac-arm64/`, `win-unpacked/`, or `.DS_Store` in `release/`.
+- Use `npm run release:local` or `node scripts/prepare-release.mjs` so the cleanup policy runs automatically.

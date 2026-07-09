@@ -24,4 +24,15 @@ describe('layout CSS', () => {
     expect(currentTaskPanel).toContain('min-height: 184px');
     expect(currentTaskPanel).not.toContain('max-height: 156px');
   });
+
+  it('keeps current task rows readable and scrolls overflow tasks', () => {
+    const taskList = cssBlock('.task-list');
+    const taskItem = cssBlock('.task-item');
+
+    expect(taskList).toContain('min-height: 0');
+    expect(taskList).toContain('overflow-y: auto');
+    expect(taskList).toContain('grid-auto-rows: minmax(96px, max-content)');
+    expect(taskItem).toContain('min-height: 96px');
+    expect(styles).not.toContain('.task-list {\n    max-height: none;\n    overflow: visible;');
+  });
 });

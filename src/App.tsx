@@ -88,6 +88,8 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   const [notice, setNotice] = useState('就绪');
   const nextNativeSubmitAtByAccountRef = useRef<Map<string, number>>(new Map());
   const nativeSubmitTimersRef = useRef<number[]>([]);
+  const refreshingTaskIdsRef = useRef<Set<string>>(new Set());
+  const activeTaskIdsBySignatureRef = useRef<Map<string, string>>(new Map());
   const nativeApi = getNativeLocalApi();
 
   const currentAccount = useMemo(
@@ -166,6 +168,12 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
   }, [hasWaitingSubmitTask]);
 
   useEffect(() => {
+    activeTaskIdsBySignatureRef.current = new Map(
+      state.tasks.filter(isActiveTask).map((task) => [buildTaskSignature(task), task.id])
+    );
+  }, [state.tasks]);
+
+  useEffect(() => {
     storage.setItem(THEME_STORAGE_KEY, theme);
   }, [storage, theme]);
 
@@ -218,10 +226,12 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       const refreshableTasks = state.tasks.filter(
         (task) =>
           task.apiTaskId &&
-          !['done', 'failed', 'expired', 'not_found'].includes(task.status)
+          !['done', 'failed', 'expired', 'not_found'].includes(task.status) &&
+          !refreshingTaskIdsRef.current.has(task.id)
       );
 
       for (const task of refreshableTasks) {
+        refreshingTaskIdsRef.current.add(task.id);
         void nativeApi
           .refreshTask(task)
           .then((updatedTask) => {
@@ -239,6 +249,9 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
             const message = normalizeNativeTaskError(error, '查询失败');
             setNotice(message);
             setState((current) => markTaskFailed(current, task.id, message));
+          })
+          .finally(() => {
+            refreshingTaskIdsRef.current.delete(task.id);
           });
       }
     }, 3500);
@@ -410,6 +423,20 @@ export default function App({ storage = getBrowserStorage() }: AppProps) {
       return;
     }
 
+    const taskSignature = buildTaskSignature(createdTask);
+    const matchingTask = state.tasks.find(
+      (candidate) => isActiveTask(candidate) && buildTaskSignature(candidate) === taskSignature
+    );
+
+    const activeTaskId = matchingTask?.id ?? activeTaskIdsBySignatureRef.current.get(taskSignature);
+
+    if (activeTaskId) {
+      setPreviewTaskId(activeTaskId);
+      setNotice('相同任务已在生成');
+      return;
+    }
+
+    activeTaskIdsBySignatureRef.current.set(taskSignature, createdTask.id);
     const now = Date.now();
     const nextAccountSubmitAt = nextNativeSubmitAtByAccountRef.current.get(accountId) ?? 0;
     const submitAt = Math.max(now, nextAccountSubmitAt);
@@ -1840,6 +1867,29 @@ function replaceTask(state: WorkspaceState, nextTask: GenerationTask): Workspace
     ...state,
     tasks: state.tasks.map((task) => (task.id === nextTask.id ? nextTask : task))
   };
+}
+
+function isActiveTask(task: GenerationTask): boolean {
+  return !['done', 'failed', 'expired', 'not_found'].includes(task.status);
+}
+
+function buildTaskSignature(task: GenerationTask): string {
+  return JSON.stringify({
+    accountId: task.accountId,
+    finalPrompt: task.finalPrompt.trim(),
+    duration: task.duration,
+    resolution: task.resolution,
+    ratio: task.ratio,
+    model: task.model,
+    outputName: task.outputName.trim(),
+    assets: task.assets.map((asset) => ({
+      id: asset.id,
+      type: asset.type,
+      label: asset.label.trim(),
+      localName: asset.localName ?? '',
+      mimeType: asset.mimeType ?? ''
+    }))
+  });
 }
 
 function markTaskWaitingForSubmit(task: GenerationTask, submitAt: number): GenerationTask {

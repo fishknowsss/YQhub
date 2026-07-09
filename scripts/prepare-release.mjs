@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cleanReleaseDirectory } from './release-policy.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const releaseDir = path.join(rootDir, 'release');
@@ -97,6 +98,15 @@ const names = await readdir(bundleDir);
 console.log(`Prepared release/YQhub-v${version}`);
 for (const name of names.sort()) {
   console.log(`- ${name}`);
+}
+
+const cleanupPlan = await cleanReleaseDirectory(releaseDir, version);
+
+if (cleanupPlan.remove.length > 0) {
+  console.log('Cleaned release directory');
+  for (const name of cleanupPlan.remove) {
+    console.log(`- removed ${name}`);
+  }
 }
 
 async function exists(filePath) {

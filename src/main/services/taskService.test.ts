@@ -55,6 +55,90 @@ describe('task service', () => {
       `${account.id}:ak-localUserKey1234567890:remote-task-1:seedance2.0fast`
     ]);
   });
+
+  it('keeps an existing local video path instead of downloading again', async () => {
+    const accountService = createAccountService({ vault: createMemorySecretVault() });
+    const account = accountService.addAccount({
+      name: '剪辑账号',
+      apiKey: 'ak-localUserKey1234567890'
+    });
+    const client: VideoTaskClient = {
+      submitTask: async () => {
+        throw new Error('not used');
+      },
+      getTaskResult: async () => ({
+        requestId: 'request-query-2',
+        status: 'done',
+        videoUrl: 'https://cdn.example.com/result.mp4',
+        respData: '{"Duration":"5.05"}'
+      })
+    };
+    const downloadService: DownloadService = {
+      downloadGeneratedVideo: async () => {
+        throw new Error('download should not be called');
+      }
+    };
+    const service = createTaskService({ accountService, client, downloadService });
+    const task = {
+      ...createRemoteTask(account.id),
+      localVideoPath: '/Users/tester/Downloads/茶饮上市-横版开场.mp4'
+    };
+
+    const refreshed = await service.refreshTask(task);
+
+    expect(refreshed).toMatchObject({
+      status: 'done',
+      progress: 100,
+      videoUrl: 'https://cdn.example.com/result.mp4',
+      localVideoPath: '/Users/tester/Downloads/茶饮上市-横版开场.mp4',
+      requestId: 'request-query-2'
+    });
+  });
+
+  it('shares one download when the same remote task completes during concurrent refreshes', async () => {
+    const accountService = createAccountService({ vault: createMemorySecretVault() });
+    const account = accountService.addAccount({
+      name: '剪辑账号',
+      apiKey: 'ak-localUserKey1234567890'
+    });
+    const client: VideoTaskClient = {
+      submitTask: async () => {
+        throw new Error('not used');
+      },
+      getTaskResult: async () => ({
+        requestId: 'request-query-concurrent',
+        status: 'done',
+        videoUrl: 'https://cdn.example.com/result.mp4',
+        respData: '{"Duration":"5.05"}'
+      })
+    };
+    const downloadCalls: string[] = [];
+    let resolveDownload!: (path: string) => void;
+    const downloadFinished = new Promise<string>((resolve) => {
+      resolveDownload = resolve;
+    });
+    const downloadService: DownloadService = {
+      downloadGeneratedVideo: async ({ taskId }) => {
+        downloadCalls.push(taskId);
+        return downloadFinished;
+      }
+    };
+    const service = createTaskService({ accountService, client, downloadService });
+    const task = createRemoteTask(account.id);
+
+    const firstRefresh = service.refreshTask(task);
+    const secondRefresh = service.refreshTask(task);
+    await Promise.resolve();
+
+    expect(downloadCalls).toEqual(['remote-task-1']);
+
+    resolveDownload('/Users/tester/Downloads/茶饮上市-横版开场.mp4');
+    const refreshedTasks = await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(refreshedTasks).toHaveLength(2);
+    expect(refreshedTasks[0].localVideoPath).toBe('/Users/tester/Downloads/茶饮上市-横版开场.mp4');
+    expect(refreshedTasks[1].localVideoPath).toBe('/Users/tester/Downloads/茶饮上市-横版开场.mp4');
+  });
 });
 
 function createRemoteTask(accountId: string): GenerationTask {

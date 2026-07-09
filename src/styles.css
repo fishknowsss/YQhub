@@ -926,14 +926,20 @@ textarea::placeholder {
 .task-list {
   display: grid;
   align-content: start;
+  grid-auto-rows: minmax(96px, max-content);
   gap: 9px;
+  min-height: 0;
   min-width: 0;
   padding-right: 2px;
   overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .task-item {
   display: grid;
+  min-height: 96px;
   min-width: 0;
   gap: 7px;
   padding: 9px;
@@ -1350,10 +1356,13 @@ textarea::placeholder {
     grid-template-rows: auto auto 34px;
   }
 
-  .history-list,
-  .task-list {
+  .history-list {
     max-height: none;
     overflow: visible;
+  }
+
+  .task-list {
+    max-height: min(42vh, 360px);
   }
 
   .history-card {

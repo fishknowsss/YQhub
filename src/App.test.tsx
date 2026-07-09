@@ -527,6 +527,52 @@ describe('App', () => {
     }
   });
 
+  it('does not create a duplicate active task for the same native draft', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createMemoryStorage();
+      const account = createNativeAccount();
+      const submitTask = vi.fn(async (task: GenerationTask) => ({
+        ...task,
+        apiTaskId: `remote-${task.id}`,
+        requestId: `request-${task.id}`
+      }));
+      window.yqhub = createNativeApiMock({
+        accounts: [account],
+        refreshTask: vi.fn(async (task) => task),
+        submitTask,
+      });
+
+      render(<App storage={storage} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      fireEvent.change(screen.getByLabelText('提示词'), {
+        target: { value: '电影级镜头。末国一目与小未抵达商业楼。' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+      const currentPanel = screen.getByLabelText('当前任务');
+      expect(submitTask).toHaveBeenCalledTimes(1);
+      expect(currentPanel.querySelectorAll('.task-item')).toHaveLength(1);
+      expect(screen.getByText('相同任务已在生成')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+        await Promise.resolve();
+      });
+      expect(submitTask).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not rate limit submits from different native accounts', async () => {
     vi.useFakeTimers();
     try {
@@ -610,6 +656,55 @@ describe('App', () => {
 
       expect(within(screen.getByLabelText('当前任务')).getByText('失败')).toBeInTheDocument();
       expect(within(screen.getByLabelText('当前任务')).getByText('查询失败')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not start another native refresh while the same task is still refreshing', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createMemoryStorage();
+      const account = createNativeAccount();
+      storage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(createPollingWorkspace(account)));
+      let resolveRefresh: ((task: GenerationTask) => void) | null = null;
+      const refreshTask = vi.fn(
+        async (task: GenerationTask) =>
+          new Promise<GenerationTask>((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+      window.yqhub = createNativeApiMock({
+        accounts: [account],
+        refreshTask
+      });
+
+      render(<App storage={storage} />);
+
+      await act(async () => {
+        await Promise.resolve();
+        vi.advanceTimersByTime(3500);
+      });
+      expect(refreshTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(3500);
+        await Promise.resolve();
+      });
+      expect(refreshTask).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveRefresh?.({
+          ...createPollingWorkspace(account).tasks[0],
+          progress: 80
+        });
+        await Promise.resolve();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(3500);
+        await Promise.resolve();
+      });
+      expect(refreshTask).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

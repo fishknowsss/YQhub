@@ -55,12 +55,16 @@ export function createTaskService({
   client,
   downloadService
 }: CreateTaskServiceOptions): TaskService {
+  const downloadedVideoPathsByRemoteTask = new Map<string, string>();
+  const pendingDownloadsByRemoteTask = new Map<string, Promise<string>>();
+
   return {
     async refreshTask(task) {
       if (!task.apiTaskId) {
         throw new Error('任务还没有远端 task_id');
       }
 
+      const remoteTaskId = task.apiTaskId;
       const credentials = accountService.getCredentials(task.accountId);
       const result = await client.getTaskResult({
         credentials,
@@ -80,15 +84,47 @@ export function createTaskService({
         updatedAt: new Date().toISOString()
       };
 
-      if (status === 'done' && result.videoUrl) {
+      if (status === 'done' && result.videoUrl && task.localVideoPath) {
+        downloadedVideoPathsByRemoteTask.set(remoteTaskId, task.localVideoPath);
         return {
           ...nextTask,
-          localVideoPath: await downloadService.downloadGeneratedVideo({
-            taskId: task.apiTaskId,
-            videoUrl: result.videoUrl,
-            outputName: task.outputName,
-            prompt: task.prompt || task.finalPrompt
-          })
+          localVideoPath: task.localVideoPath
+        };
+      }
+
+      if (status === 'done' && result.videoUrl) {
+        const cachedVideoPath = downloadedVideoPathsByRemoteTask.get(remoteTaskId);
+
+        if (cachedVideoPath) {
+          return {
+            ...nextTask,
+            localVideoPath: cachedVideoPath
+          };
+        }
+
+        let download = pendingDownloadsByRemoteTask.get(remoteTaskId);
+
+        if (!download) {
+          download = downloadService
+            .downloadGeneratedVideo({
+              taskId: remoteTaskId,
+              videoUrl: result.videoUrl,
+              outputName: task.outputName,
+              prompt: task.prompt || task.finalPrompt
+            })
+            .then((localVideoPath) => {
+              downloadedVideoPathsByRemoteTask.set(remoteTaskId, localVideoPath);
+              return localVideoPath;
+            })
+            .finally(() => {
+              pendingDownloadsByRemoteTask.delete(remoteTaskId);
+            });
+          pendingDownloadsByRemoteTask.set(remoteTaskId, download);
+        }
+
+        return {
+          ...nextTask,
+          localVideoPath: await download
         };
       }
 
