@@ -17,7 +17,7 @@ YQhub 不让渲染进程直接访问远端接口。React 界面只通过 preload
 
 ```text
 React renderer
-  -> electron/preload.ts
+  -> electron/preload.cjs
   -> electron/main.ts
   -> src/main/services/*
   -> src/services/xiaoyunqueClient.ts
